@@ -27,8 +27,8 @@ from version import __version__  # pylint: disable=g-import-not-at-top
 with open('README.md') as fp:
   _LONG_DESCRIPTION = fp.read()
 
-_jax_version = '0.3.20'
-_jaxlib_version = '0.3.20'
+_jax_version = '0.2.27'
+_jaxlib_version = '0.1.76'
 
 setuptools.setup(
     name='t5x',
@@ -51,8 +51,8 @@ setuptools.setup(
         'clu@git+https://github.com/google/CommonLoopUtils#egg=clu',
         'flax@git+https://github.com/google/flax#egg=flax',
         'gin-config',
-        f'jax=={_jax_version}',
-        f'jaxlib=={_jaxlib_version}',
+        f'jax>={_jax_version}',
+        f'jaxlib>={_jaxlib_version}',
         'numpy',
         'orbax@git+https://github.com/google/orbax#egg=orbax',
         'seqio@git+https://github.com/google/seqio#egg=seqio',
@@ -68,7 +68,7 @@ setuptools.setup(
         'test': ['pytest'],
 
         # Cloud TPU requirements.
-        'tpu': [f'jax[tpu] >= {_jax_version}'],
+        # 'tpu': [f'jax[tpu] >= {_jax_version}'],
     },
     classifiers=[
         'Development Status :: 4 - Beta',
