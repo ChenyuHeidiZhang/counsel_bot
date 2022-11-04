@@ -1,6 +1,6 @@
 import pandas as pd
 
-df = pd.read_csv("../counsel-chat/data/20200325_counsel_chat.csv", encoding='utf-8')
+df = pd.read_csv("../../counsel-chat/data/20200325_counsel_chat.csv", encoding='utf-8')
 
 df_selected = df[['questionText', 'answerText']]
 df_selected['questionText'] = df_selected['questionText'].str.replace('\n', ' ')
