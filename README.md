@@ -1,7 +1,11 @@
 # counsel_bot
 
 ## Curent progress:
-Finally able to set up T5x finetuning on a GPU.
+#### MAML
+Data prepared for meta learning are under `data/meta_learn` \
+Currently working on applying MAML on GPT2 (`gpt2/maml.py`)
+
+#### Finetuning T5x finetuning.
 Custom task registration is in `t5x/t5x/register_task.py`.
 Run finetuning with `bash t5x/finetune.sh` and task-specific configs are in `t5x/counsel-bot_finetune.gin`. \
 documentation: https://github.com/google-research/t5x/blob/main/docs/usage/finetune.md
