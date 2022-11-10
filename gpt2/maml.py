@@ -17,7 +17,7 @@ parser.add_argument('--device', default='cuda')
 args = parser.parse_args()
 
 DEVICE = torch.device(args.device)
-MAX_TOKENS = 1024
+MAX_TOKENS = 1024  # maximum number of tokens to generate
 SUMMARY_INTERVAL = 10
 SAVE_INTERVAL = 100
 LOG_INTERVAL = 10

@@ -141,7 +141,8 @@ def run_ft(model_name: str, mode: str, n_train: int = 512, n_val: int = 128):
     results = {}
     if args.debug:
         n_val = 1
-    train, val = CounselChatFtDataset(n_train, n_val)
+    train = CounselChatFtDataset(split='train', num_data=n_train)
+    val = train = CounselChatFtDataset(split='test', num_data=n_val)
     model, tokenizer = utils.get_model_and_tokenizer(model_name, transformers.AutoModelForCausalLM)
 
     print(f'Fine-tuning {model_name} with k={n_train} and mode={mode}')
