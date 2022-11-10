@@ -29,6 +29,7 @@ def get_model_and_tokenizer(model: str, Cls, **model_kwargs):
     if tok.pad_token_id is None:
         if Cls == transformers.AutoModelForCausalLM:
             tok.pad_token = tok.eos_token
+            tok.pad_token_id = tok.eos_token_id
         else:
             print("Adding pad token to tokenizer")
             tok.add_special_tokens({'pad_token': '[PAD]'})
@@ -47,7 +48,7 @@ def tokenize_gpt2_batch(tokenizer, x, y, DEVICE):
               are padding (if you requested padding and tensors from the tokenizer)
         x: a list of strings, each of which is the input for a single example
         y: a list of strings, each of which is a *target* for a single example
-    
+  
     Returns:
         A dictionary with the following keys:
             - input_ids: a tensor of shape [batch_size, sequence_length] 
@@ -61,14 +62,38 @@ def tokenize_gpt2_batch(tokenizer, x, y, DEVICE):
         length is the longest in the batch. The other sequences should be padded to
         this length (you can get the tokenizer to handle this padding!).
     """
-    tokenized_sequences = tokenizer([x_ + y_ for x_, y_ in zip(x, y)], return_tensors='pt', padding=True)
+    tokenized_sequences = tokenizer(text=x, text_pair=y, return_tensors='pt', padding=True, truncation=True, return_token_type_ids=True)
     labels = tokenized_sequences['input_ids'].clone()
-    x_input_ids = tokenizer(x)['input_ids']
-    for i, sent_ids in enumerate(x_input_ids):
-        labels[i][:len(sent_ids)] = -100  # mask the tokens in x
-    labels[~tokenized_sequences['attention_mask'].to(torch.bool)] = -100  # mask the paddings
+    labels[tokenized_sequences['attention_mask'] == 0] = -100  # mask the paddings
+    labels[tokenized_sequences['token_type_ids'] == 0] = -100  # mask the tokens in x
     tokenized_sequences['labels'] = labels
     return tokenized_sequences.to(DEVICE)
+
+
+def do_sample(model, input_ids, max_tokens):
+    """
+    Sample from the model using the given input_ids as a prefix until
+    we have sampled max_tokens tokens.
+
+    Args:
+        model: A transformers.PreTrainedModel that we will sample from.
+        input_ids: An integer tensor of shape [1, prefix_len]
+        max_tokens: Stop sampling if we've sampled this many tokens
+    
+    Returns:
+        The sampled tokens (a python list of ints/zero-dim tensors), not including the input_ids prefix
+    """
+    sampled_tokens = []
+    with torch.no_grad():
+        while len(sampled_tokens) < max_tokens:
+            next_token_logits = model(input_ids).logits[:, -1, :]
+
+            next_token_id = torch.argmax(next_token_logits)
+
+            input_ids = torch.cat((input_ids, next_token_id.view(1,-1)), dim=1)
+            sampled_tokens.append(next_token_id)
+
+    return sampled_tokens
 
 
 def get_loss(logits: torch.tensor, targets: torch.tensor) -> torch.tensor:

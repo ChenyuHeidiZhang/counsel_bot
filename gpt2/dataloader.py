@@ -48,6 +48,9 @@ class CounselChatFtDataset(dataset.Dataset):
         return {'x': self.data['x'][idx], 'y': self.data['y'][idx]}
 
 
+NUM_TRAIN_TOPICS = 26
+NUM_VAL_TOPICS = 5
+NUM_TEST_TOPICS = 0  # will get test topics later
 
 class CounselChatMetaDataset(dataset.Dataset):
     """
@@ -60,7 +63,8 @@ class CounselChatMetaDataset(dataset.Dataset):
 
         data_path = '../data/meta_learn'
         self.topic_data_files = [os.path.join(data_path, f) for f in os.listdir(data_path)]
-        self.num_topics = len(self.topic_data_files)
+        # TODO: try shuffling the topic files
+        self.num_topics = len(self.topic_data_files)  # currently 31 topics total; the smallest topic has only 3 examples, so k<=2
         self.num_support = num_support
         self.num_query = num_query
 
@@ -84,7 +88,8 @@ class CounselChatMetaDataset(dataset.Dataset):
             questions_query (num_query,)
             responses_query (num_query,)
         """
-        topic_data = self.read_topic_file(self.topic_data_files[topic_data])
+        print('topic:', self.topic_data_files[topic_idx])
+        topic_data = self.read_topic_file(self.topic_data_files[topic_idx])
         num_examples = len(topic_data['x'])
         sampled_idxs =  np.random.randint(
             low=0, high=num_examples, size=self.num_support+self.num_query)
@@ -102,7 +107,7 @@ class CounselChatSampler(sampler.Sampler):
         """Inits CounselChatSampler.
 
         Args:
-            split_idxs (range): indices that comprise the
+            split_idxs (range): topic indices that comprise the
                 training/validation/test split
             num_tasks (int): number of tasks to sample
         """
@@ -114,14 +119,14 @@ class CounselChatSampler(sampler.Sampler):
         return (
             np.random.default_rng().choice(
                 self._split_idxs,
-                size=1,
-                replace=False
             ) for _ in range(self._num_tasks)
         )
 
     def __len__(self):
         return self._num_tasks
 
+def identity(x):
+    return x
 
 def get_counselchat_meta_learning_dataloader(
         split,
@@ -130,4 +135,27 @@ def get_counselchat_meta_learning_dataloader(
         num_query,
         num_tasks_per_epoch
 ):
-    pass
+
+    if split == 'train':
+        split_idxs = range(NUM_TRAIN_TOPICS)
+    elif split == 'val':
+        split_idxs = range(
+            NUM_TRAIN_TOPICS,
+            NUM_TRAIN_TOPICS + NUM_VAL_TOPICS
+        )
+    elif split == 'test':
+        split_idxs = range(
+            NUM_TRAIN_TOPICS + NUM_VAL_TOPICS,
+            NUM_TRAIN_TOPICS + NUM_VAL_TOPICS + NUM_TEST_TOPICS
+        )
+    else:
+        raise ValueError
+
+    return dataloader.DataLoader(
+        dataset=CounselChatMetaDataset(num_support, num_query),
+        batch_size=batch_size,
+        sampler=CounselChatSampler(split_idxs, num_tasks_per_epoch),
+        # num_workers=8,
+        collate_fn=identity,
+        pin_memory=torch.cuda.is_available()
+    )
