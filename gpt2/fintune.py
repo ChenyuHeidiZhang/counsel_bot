@@ -11,7 +11,11 @@ import json
 import tqdm
 import random
 
+from torch.utils.data import dataloader
 from dataloader import CounselChatFtDataset
+
+import warnings
+warnings.filterwarnings('ignore') # setting ignore as a parameter
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--model', default='med')
@@ -22,6 +26,7 @@ args = parser.parse_args()
 
 DEVICE = torch.device(args.device)
 MAX_TOKENS = 1024
+NUM_EPOCHS = 5
 EARLY_STOPPING_THRES = 0.1  # loss value for early stopping
 
 class LoRAConv1DWrapper(nn.Module):
@@ -78,19 +83,23 @@ def parameters_to_fine_tune(model: nn.Module, mode: str) -> List:
 def evaluate(model, tokenizer, val_data):
     targets = []
     predictions = []
-    pbar = tqdm.tqdm(list(range(len(val_data['x']))))
+    pbar = tqdm.tqdm(list(range(len(val_data))))
 
+    # TODO: do batch inference
     for row in pbar:
-        test_input = val_data['x'][row]
-        targets.append(val_data['y'][row])
-        input_ids = tokenizer(test_input, return_tensors='pt').input_ids.to(DEVICE)
-        sampled_tokens = model.generate(input_ids, max_length=MAX_TOKENS)
-        decoded = tokenizer.decode(sampled_tokens).strip()
-        predictions.append(decoded)
+        test_input = val_data[row]['x']
+        targets.append(val_data[row]['y'])
+        encodings = tokenizer(test_input, return_tensors='pt')  #.input_ids.to(DEVICE)
+        input_ids = encodings['input_ids'].to(DEVICE)
+        attn_mask = encodings['attention_mask'].to(DEVICE)
+        sampled_tokens = model.generate(input_ids, attention_mask=attn_mask, max_length=MAX_TOKENS)
+        for i in range(sampled_tokens.size(0)):
+            decoded = tokenizer.decode(sampled_tokens[i]).split('Response: ')[-1].strip()
+            predictions.append(decoded)
     return utils.get_bleu(predictions, targets)
 
 
-def ft_gpt2(model, tok, x, y, val_data, mode, batch_size=8, grad_accum=8):
+def ft_gpt2(model, tok, train_data, val_data, mode, batch_size=8, grad_accum=8):
     model = copy.deepcopy(model)
 
     if mode.startswith('lora'):
@@ -101,39 +110,32 @@ def ft_gpt2(model, tok, x, y, val_data, mode, batch_size=8, grad_accum=8):
 
     model.to(DEVICE)
 
+    train_dataloader = dataloader.DataLoader(
+        train_data, batch_size=batch_size // grad_accum)
     optimizer = torch.optim.Adam(parameters_to_fine_tune(model, mode), lr=2e-5)
-    max_n = len(x) * 5
-    pbar = tqdm.tqdm(range(max_n))
-    idxs = []
-    for step in pbar:
-        model.train()
+    pbar = tqdm.tqdm(range(NUM_EPOCHS))
+    for epoch in pbar:
+        for idx, batch in enumerate(train_dataloader):
+            model.train()
 
-        if len(idxs) < batch_size // grad_accum:
-            idxs = list(range(len(x)))
-            random.shuffle(idxs)
-        batch_idxs = idxs[:batch_size // grad_accum]
-        idxs = idxs[batch_size // grad_accum:]
+            tokenized_seqs = utils.tokenize_gpt2_batch(tok, batch['x'], batch['y'], DEVICE)
+            output = model(**tokenized_seqs, use_cache=False)
+            loss = output.loss / grad_accum
+            loss.backward()
+            if idx % grad_accum == 0 and idx > 0:
+                optimizer.step()
+                optimizer.zero_grad()
+                pbar.set_description(f'Loss: {loss:.04f}')
 
-        batch_x = [x[id] for id in batch_idxs]
-        batch_y = [y[id] for id in batch_idxs]
-        tokenized_seqs = utils.tokenize_gpt2_batch(tok, batch_x, batch_y, DEVICE)
-        output = model(**tokenized_seqs, use_cache=False)
-        loss = output.loss / grad_accum
-        loss.backward()
-        if step % grad_accum == 0 and step > 0:
-            optimizer.step()
-            optimizer.zero_grad()
-            pbar.set_description(f'Loss: {loss:.04f}')
+            if idx % (grad_accum * 32) == 0:  # evaluate with every 32 gradient updates
+                with torch.no_grad():
+                    model.eval()
+                    bleu_score = evaluate(model, tok, val_data)
+                    print(f'Epoch: {epoch}, Step: {idx}, Fine-tuning score: {bleu_score:.04f}')
 
-        if step % (grad_accum * 50) == 0:
-            with torch.inference_mode():
-                model.eval()
-                bleu_score = evaluate(model, tok, val_data)
-                print(f'Step: {step}, Fine-tuning score: {bleu_score:.04f}')
-
-        if loss <= EARLY_STOPPING_THRES:
-            print('Early stopping!')
-            break
+            if loss <= EARLY_STOPPING_THRES:
+                print('Early stopping!')
+                break
     return model
 
 
@@ -142,11 +144,12 @@ def run_ft(model_name: str, mode: str, n_train: int = 512, n_val: int = 128):
     if args.debug:
         n_val = 1
     train = CounselChatFtDataset(split='train', num_data=n_train)
-    val = train = CounselChatFtDataset(split='test', num_data=n_val)
+    print(len(train))
+    val = CounselChatFtDataset(split='test', num_data=n_val)
     model, tokenizer = utils.get_model_and_tokenizer(model_name, transformers.AutoModelForCausalLM)
 
     print(f'Fine-tuning {model_name} with k={n_train} and mode={mode}')
-    fine_tuned = ft_gpt2(model, tokenizer, train['x'], train['y'], val, mode)
+    fine_tuned = ft_gpt2(model, tokenizer, train, val, mode)
 
     fine_tuned.eval()
     metric = evaluate(fine_tuned, tokenizer, val)

@@ -30,7 +30,7 @@ class CounselChatFtDataset(dataset.Dataset):
 
         self.num_data = num_data
         self.data_file = f'../data/finetune/counselchat_{split}.tsv'
-        self.data = self.read_tsv_file(self.data_file)
+        self.data = self.read_tsv_file()
 
     def read_tsv_file(self):
         questions = []
@@ -43,9 +43,15 @@ class CounselChatFtDataset(dataset.Dataset):
 
         qs, rs = add_prefixes(questions[:self.num_data], responses[:self.num_data])
         return {'x': qs, 'y': rs}
+        # return [(x, y) for x, y in zip(qs, rs)]
 
     def __getitem__(self, idx):
+        print(idx)
         return {'x': self.data['x'][idx], 'y': self.data['y'][idx]}
+        # return {'x': self.data[idx][0], 'y': self.data[idx][1]}
+
+    def __len__(self):
+        return len(self.data['x'])
 
 
 NUM_TRAIN_TOPICS = 26
