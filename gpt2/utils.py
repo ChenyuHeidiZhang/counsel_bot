@@ -4,6 +4,8 @@ import sacrebleu
 from rouge_score import rouge_scorer
 import transformers
 
+from dataloader import LABEL_PREFIX
+
 def model2hfname(model: str) -> str:
     return {
         'small': 'gpt2',
@@ -94,6 +96,18 @@ def do_sample(model, input_ids, max_tokens):
             sampled_tokens.append(next_token_id)
 
     return sampled_tokens
+
+def model_generate(tokenizer, model, test_input, DEVICE, MAX_TOKENS):
+    '''Sample tokens and decode.'''
+    encodings = tokenizer(test_input, return_tensors='pt')  #.input_ids.to(DEVICE)
+    input_ids = encodings['input_ids'].to(DEVICE)
+    attn_mask = encodings['attention_mask'].to(DEVICE)
+    sampled_tokens = model.generate(input_ids, attention_mask=attn_mask, max_length=MAX_TOKENS)
+    decoded_out = []
+    for i in range(sampled_tokens.size(0)):
+        decoded = tokenizer.decode(sampled_tokens[i]).split(LABEL_PREFIX.strip())[-1].strip()
+        decoded_out.append(decoded)
+    return decoded_out
 
 
 def get_loss(logits: torch.tensor, targets: torch.tensor) -> torch.tensor:

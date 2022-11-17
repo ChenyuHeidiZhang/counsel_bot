@@ -1,17 +1,19 @@
 from typing import List, Tuple
 import os
 import numpy as np
+import pandas as pd
 import torch
 from torch.utils.data import dataset, sampler, dataloader
 
+np.random.seed(42)
+
+INPUT_PREFIX = 'Client: '
+LABEL_PREFIX = ' You:'
+LABEL_SUFFIX = ''
 
 def add_prefixes(x: List[str], y: List[str]) -> Tuple[List[str], List[str]]:
-    input_prefix = 'Question: '
-    label_prefix = ' Response:'
-    label_suffix = ''
-
-    x = [input_prefix + x_.replace('\n', ' ') + label_prefix for x_ in x]
-    y = [' ' + y_.replace('\n', ' ') + label_suffix for y_ in y]
+    x = [INPUT_PREFIX + x_.replace('\n', ' ') + LABEL_PREFIX for x_ in x]
+    y = [' ' + y_.replace('\n', ' ') + LABEL_SUFFIX for y_ in y]
 
     return x, y
 
@@ -54,7 +56,7 @@ class CounselChatFtDataset(dataset.Dataset):
         return len(self.data['x'])
 
 
-NUM_TRAIN_TOPICS = 26
+NUM_TRAIN_TOPICS = 20
 NUM_VAL_TOPICS = 5
 NUM_TEST_TOPICS = 0  # will get test topics later
 
@@ -67,43 +69,80 @@ class CounselChatMetaDataset(dataset.Dataset):
     def __init__(self, num_support, num_query=1):
         super().__init__()
 
-        data_path = '../data/meta_learn'
-        self.topic_data_files = [os.path.join(data_path, f) for f in os.listdir(data_path)]
-        # TODO: try shuffling the topic files
-        self.num_topics = len(self.topic_data_files)  # currently 31 topics total; the smallest topic has only 3 examples, so k<=2
         self.num_support = num_support
         self.num_query = num_query
 
-    def read_topic_file(self, file):
-        questions = []
-        responses = []
-        with open(file, 'r') as f:
-            for line in f.readlines():
-                question, response = line.split('\t')
-                questions.append(question)
-                responses.append(response)
+        data_path = '../data/meta_learn'
+        self.topic_data_files = [os.path.join(data_path, f) for f in os.listdir(data_path)]
+        np.random.shuffle(self.topic_data_files)
 
-        qs, rs = add_prefixes(questions, responses)
-        return {'x': qs, 'y': rs}
+        self.all_topics, self.topic_data = self.read_topic_file(self.topic_data_files)
+
+    def get_topic_from_filename(self, filename):
+        return filename.split('/')[-1].split('.tsv')[0]
+
+    def read_topic_file(self, data_files):
+        '''Read all data from data_files;
+        ignore topics where the number of unique questions are not enough for training.
+        Returns:
+            all_topics: list of all topic names
+            all_data: list of data for all topics
+        '''
+        all_topics = []
+        all_data = []
+        for file in data_files:
+            df = pd.read_csv(file, delimiter='\t', encoding='utf-8')
+            unique_questions = df.iloc[:,0].unique()
+            if len(unique_questions) < self.num_support + self.num_query:
+                continue
+            questions = list(df.iloc[:, 0])
+            responses = list(df.iloc[:, 1])
+            qs, rs = add_prefixes(questions, responses)
+            all_topics.append(self.get_topic_from_filename(file))
+            all_data.append({'x': qs, 'y': rs})
+        return all_topics, all_data
+    
+    def format_topic_data(self, data_x, data_y):
+        '''Turn two lists into a map from question to list of corresponding responses'''
+        formatted_data = {}
+        for i, q in enumerate(data_x):
+            if q in formatted_data:
+                formatted_data[q].append(data_y[i])
+            else:
+                formatted_data[q] = [data_y[i]]
+        return formatted_data
 
     def __getitem__(self, topic_idx):
-        """Constructs a task.
+        """Constructs a task. Questions should be different for entries in each task.
         Returns:
             questions_support (num_support,)
             responses_support (num_support,)
             questions_query (num_query,)
             responses_query (num_query,)
         """
-        print('topic:', self.topic_data_files[topic_idx])
-        topic_data = self.read_topic_file(self.topic_data_files[topic_idx])
-        num_examples = len(topic_data['x'])
-        sampled_idxs =  np.random.randint(
-            low=0, high=num_examples, size=self.num_support+self.num_query)
-        questions_support = np.array(topic_data['x'])[sampled_idxs[:self.num_support]]
-        responses_support = np.array(topic_data['y'])[sampled_idxs[:self.num_support]]
-        questions_query = np.array(topic_data['x'])[sampled_idxs[self.num_support:]]
-        responses_query = np.array(topic_data['y'])[sampled_idxs[self.num_support:]]
-        return questions_support, responses_support, questions_query, responses_query
+        print('topic:', self.all_topics[topic_idx])
+        topic_data = self.topic_data[topic_idx]
+        formatted_data = self.format_topic_data(topic_data['x'], topic_data['y'])
+        # sample questions
+        all_questions = np.array(list(formatted_data.keys()))
+        question_sampled_idxs =  np.random.randint(
+            low=0, high=len(all_questions), size=self.num_support+self.num_query)
+
+        questions_support = all_questions[question_sampled_idxs[:self.num_support]]
+        questions_query = all_questions[question_sampled_idxs[self.num_support:]]
+
+        responses_support = []
+        for q in questions_support:
+            responses_support.append(np.random.choice(formatted_data[q]))
+        responses_query = []
+        for q in questions_query:
+            responses_query.append(np.random.choice(formatted_data[q]))
+
+        return questions_support, np.array(responses_support), questions_query, np.array(responses_query)
+
+    def __len__(self):
+        return len(self.all_topics)  # currently 31 topics max
+
 
 # TODO: do we need the sampler?
 class CounselChatSampler(sampler.Sampler):

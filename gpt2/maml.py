@@ -13,6 +13,7 @@ from dataloader import get_counselchat_meta_learning_dataloader as get_dataloade
 parser = argparse.ArgumentParser()
 
 parser.add_argument('--model', default='med')
+parser.add_argument('--mode', default='all')
 parser.add_argument('--log_dir', type=str, default=None,
                     help='directory to save to or load from')
 parser.add_argument('--num_support', type=int, default=1,
@@ -137,14 +138,7 @@ class Gpt2MAML:
             outer_loss_batch.append(loss)
 
             if not train:  # do the evaluation only when not training
-                encodings = self._tokenizer(inp_query, return_tensors='pt')
-                input_ids = encodings['input_ids'].to(DEVICE)
-                attn_mask = encodings['attention_mask'].to(DEVICE)
-                sampled_tokens = model.generate(input_ids, attention_mask=attn_mask, max_length=MAX_TOKENS)
-                decoded_out = []
-                for i in range(sampled_tokens.size(0)):
-                    decoded = self._tokenizer.decode(sampled_tokens[i]).split('Response: ')[-1].strip()
-                    decoded_out.append(decoded)
+                decoded_out = utils.model_generate(self._tokenizer, model, inp_query, DEVICE, MAX_TOKENS)
                 score = utils.get_bleu(decoded_out, out_query)
                 score_query_batch.append(score)
 

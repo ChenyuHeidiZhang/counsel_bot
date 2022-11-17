@@ -89,13 +89,8 @@ def evaluate(model, tokenizer, val_data):
     for row in pbar:
         test_input = val_data[row]['x']
         targets.append(val_data[row]['y'])
-        encodings = tokenizer(test_input, return_tensors='pt')  #.input_ids.to(DEVICE)
-        input_ids = encodings['input_ids'].to(DEVICE)
-        attn_mask = encodings['attention_mask'].to(DEVICE)
-        sampled_tokens = model.generate(input_ids, attention_mask=attn_mask, max_length=MAX_TOKENS)
-        for i in range(sampled_tokens.size(0)):
-            decoded = tokenizer.decode(sampled_tokens[i]).split('Response: ')[-1].strip()
-            predictions.append(decoded)
+        decoded = utils.model_generate(tokenizer, model, test_input, DEVICE, MAX_TOKENS)
+        predictions.extend(decoded)
     return utils.get_bleu(predictions, targets)
 
 
