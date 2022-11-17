@@ -1,7 +1,9 @@
+from typing import List, Tuple
 import argparse
 import copy
 import os
 import torch
+from torch import nn
 import transformers
 import numpy as np
 import tensorboard
@@ -12,8 +14,8 @@ from dataloader import get_counselchat_meta_learning_dataloader as get_dataloade
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--model', default='med')
-parser.add_argument('--mode', default='all')
+parser.add_argument('--model', default='small')
+parser.add_argument('--mode', default='first')
 parser.add_argument('--log_dir', type=str, default=None,
                     help='directory to save to or load from')
 parser.add_argument('--num_support', type=int, default=1,
@@ -50,12 +52,65 @@ SAVE_INTERVAL = 100
 LOG_INTERVAL = 2
 VAL_INTERVAL = LOG_INTERVAL * 10
 
+
+class LoRAConv1DWrapper(nn.Module):
+    def __init__(self, conv1dmodule: nn.Module, lora_rank: int):
+        super().__init__()
+
+        self.base_module = conv1dmodule
+
+        shape = self.base_module.weight.shape  # [d1, d2]
+        self.A = nn.Parameter(
+            torch.zeros([shape[0], lora_rank], dtype=torch.float32, device=DEVICE))
+        self.B = nn.Parameter(
+            torch.empty([shape[1], lora_rank], dtype=torch.float32, device=DEVICE))
+        nn.init.xavier_normal_(self.B)
+
+    def forward(self, x):
+        out = self.base_module(x) + torch.matmul(torch.matmul(x, self.A), self.B.transpose(0,1))
+        return out
+
+
+def parameters_to_fine_tune(model: nn.Module, mode: str) -> List:
+    """
+    Select the parameters in `model` that should be fine-tuned in mode `mode`.
+
+    Args:
+      model: the model we're fine-tuning
+      mode: the fine-tuning mode we're using; may be 'all', 'last', 'first',
+        'middle', or 'loraN' (where N is an integer)
+    
+    Returns:
+      A list of nn.Parameters of `model` that should be fine-tuned in the given
+        fine-tuning mode.
+    """
+    if mode == 'all':
+        return model.parameters()
+    elif mode == 'last':
+        return model.transformer.h[-2:].parameters()  # last 2 transformer blocks of GPT-2
+    elif mode == 'first':
+        return model.transformer.h[:2].parameters()  # first 2 transformer blocks of GPT-2
+    elif mode == 'middle':
+        middle_block = (len(model.transformer.h)-1) // 2
+        return model.transformer.h[middle_block:middle_block+2].parameters()
+    elif mode.startswith('lora'):
+        lst = []
+        for mod in model.modules():
+            if isinstance(mod, LoRAConv1DWrapper):
+                lst.append(mod.A)
+                lst.append(mod.B)
+        return lst
+    else:
+        raise NotImplementedError()
+
+
 class Gpt2MAML:
     """Trains and assesses a MAML."""
 
     def __init__(
             self,
             model_name,
+            mode,
             num_inner_steps,
             inner_lr,
             learn_inner_lrs,
@@ -70,21 +125,26 @@ class Gpt2MAML:
         self._model = model.to(DEVICE)
         self._tokenizer = tokenizer
         self._num_inner_steps = num_inner_steps
-        self._inner_lrs = inner_lr
-        # TODO: train only part of GPT-2's parameters
-        # TODO: initialize different modules of GPT2 for different lr
-        self._learn_inner_lrs = learn_inner_lrs
+        self._inner_lrs = torch.tensor(inner_lr, requires_grad=learn_inner_lrs)
         self._outer_lr = outer_lr
 
+        # TODO: train only part of GPT-2's parameters
+        # TODO: initialize different modules of GPT2 for different lr
         self._optimizer = torch.optim.Adam(
-            self._model.parameters(),
+            params=list(parameters_to_fine_tune(model, mode)) + [self._inner_lrs],
             lr=self._outer_lr
+        )
+
+        self._inner_optimizer = torch.optim.Adam(
+            params=parameters_to_fine_tune(model, mode),
+            lr=self._inner_lrs
         )
 
         self._log_dir = log_dir
         os.makedirs(self._log_dir, exist_ok=True)
 
         self._start_train_step = 0
+
 
     def _inner_loop(self, tokenized_seqs, train):
         """Computes the adapted network parameters via the MAML inner loop.
@@ -98,15 +158,13 @@ class Gpt2MAML:
             scores (list[float]): support set score (BLEU or ROUGE) over the course of
                 the inner loop, length num_inner_steps + 1
         """
-        model = copy.deepcopy(self._model)  # does gradient flow through deepcopy?
+        self._inner_optimizer.zero_grad()
         for _ in range(self._num_inner_steps):
-            loss = model(**tokenized_seqs).loss
-            d_loss = torch.autograd.grad(outputs=loss, inputs=model.parameters(), create_graph=train)
+            loss = self._model(**tokenized_seqs).loss
+            loss.backward(create_graph=train)
+            self._inner_optimizer.step()
 
-            for i, param in enumerate(model.parameters()):
-                param = param - self._inner_lrs * d_loss[i]
-        return model
-    
+
     def _outer_step(self, task_batch, train):
         """Computes the MAML loss and metrics on a batch of tasks.
 
@@ -132,15 +190,23 @@ class Gpt2MAML:
             out_query = list(out_query)
 
             tokenized_seqs = utils.tokenize_gpt2_batch(self._tokenizer, inp_support, out_support, DEVICE)
-            model = self._inner_loop(tokenized_seqs, train)
+            # self._model.load_state_dict(self.init_state)
+            # self.init_state = copy.deepcopy(self._model.state_dict())
+            model_copy = copy.deepcopy(self._model)  # does gradient flow through deepcopy?
+            self._inner_loop(tokenized_seqs, train)  # updates self._model
+
             tokenized_query_seqs = utils.tokenize_gpt2_batch(self._tokenizer, inp_query, out_query, DEVICE)
-            loss = model(**tokenized_query_seqs).loss
+            loss = self._model(**tokenized_query_seqs).loss
             outer_loss_batch.append(loss)
 
             if not train:  # do the evaluation only when not training
-                decoded_out = utils.model_generate(self._tokenizer, model, inp_query, DEVICE, MAX_TOKENS)
+                decoded_out = utils.model_generate(self._tokenizer, self._model, inp_query, DEVICE, MAX_TOKENS)
                 score = utils.get_bleu(decoded_out, out_query)
                 score_query_batch.append(score)
+
+            self._model = model_copy
+
+        # self._model.load_state_dict(self.init_state)  # recover the initial step before inner loop
 
         outer_loss = torch.mean(torch.stack(outer_loss_batch))
         score_query = 0 if train else np.mean(score_query_batch)
@@ -268,6 +334,7 @@ def main(args):
 
     maml = Gpt2MAML(
         args.model,
+        args.mode,
         args.num_inner_steps,
         args.inner_lr,
         args.learn_inner_lrs,
@@ -319,4 +386,5 @@ def main(args):
         maml.test(dataloader_test)
 
 if __name__ == '__main__':
+    # with torch.autograd.set_detect_anomaly(True):
     main(args)

@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import dataset, sampler, dataloader
+from nltk.tokenize import sent_tokenize
 
 np.random.seed(42)
 
@@ -98,10 +99,14 @@ class CounselChatMetaDataset(dataset.Dataset):
             questions = list(df.iloc[:, 0])
             responses = list(df.iloc[:, 1])
             qs, rs = add_prefixes(questions, responses)
+            # 5 sentences maximum for each response
+            # TODO: find better way to shorten the training responses
+            rs = [' '.join(sent_tokenize(r)[:5]) for r in rs]
+
             all_topics.append(self.get_topic_from_filename(file))
             all_data.append({'x': qs, 'y': rs})
         return all_topics, all_data
-    
+
     def format_topic_data(self, data_x, data_y):
         '''Turn two lists into a map from question to list of corresponding responses'''
         formatted_data = {}
