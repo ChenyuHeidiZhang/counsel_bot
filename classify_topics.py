@@ -25,6 +25,10 @@ def read_topic_embeddings():
         embeddings = json.load(f)
     return embeddings
 
+def topic_embeddings_from_words(topics):
+    embds = model.encode(topics)
+    return {topic: embds[i] for i, topic in enumerate(topics)}
+
 def find_topics(sentences, topic_embeddings):
     sentence_embeddings = model.encode(sentences)
     sim = cosine_similarity(
@@ -34,7 +38,10 @@ def find_topics(sentences, topic_embeddings):
     print(sim)
 
 if __name__ == "__main__":
-    sent = ['My mother controls my life.']
+    sent = ['My husband and I have been together for seven years now.']
+    sent = ["I’m a teenager. My entire family needs family therapy, and more than likely individual therapy. My parents refuse to take action, and I'm tired of it. Is there any way I can get out of this myself?"]
+    sent = ["When I'm in large crowds I get angry and I just can't deal with people. I don't really like other people (I prefer animals) they make me nervous and scared. I lay awake at night thinking and having conversations in my head and i almost always end up making myself feel terrible and crying, I have more conversions in my head than I do with actual people."]
     # calculate_topic_embeddings(ALL_TOPICS)
     topic_embds = read_topic_embeddings()
+    # topic_embds = topic_embeddings_from_words(ALL_TOPICS)
     find_topics(sent, topic_embds)
