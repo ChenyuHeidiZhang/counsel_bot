@@ -47,7 +47,7 @@ def get_icl_prompts(
     random.shuffle(input_labels)
 
     for (inp, lab) in input_labels:
-        prompt +=  inp + lab + "\n"
+        prompt +=  inp + ' ' + lab + "\n"
     prompt += test_input
 
     return prompt

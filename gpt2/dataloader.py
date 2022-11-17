@@ -14,7 +14,7 @@ LABEL_SUFFIX = ''
 
 def add_prefixes(x: List[str], y: List[str]) -> Tuple[List[str], List[str]]:
     x = [INPUT_PREFIX + x_.replace('\n', ' ') + LABEL_PREFIX for x_ in x]
-    y = [' ' + y_.replace('\n', ' ') + LABEL_SUFFIX for y_ in y]
+    y = [y_.replace('\n', ' ') + LABEL_SUFFIX for y_ in y]
 
     return x, y
 
@@ -77,44 +77,42 @@ class CounselChatMetaDataset(dataset.Dataset):
         self.topic_data_files = [os.path.join(data_path, f) for f in os.listdir(data_path)]
         np.random.shuffle(self.topic_data_files)
 
-        self.all_topics, self.topic_data = self.read_topic_file(self.topic_data_files)
+        self.all_topics = self.get_all_topics(self.topic_data_files)
 
-    def get_topic_from_filename(self, filename):
-        return filename.split('/')[-1].split('.tsv')[0]
-
-    def read_topic_file(self, data_files):
-        '''Read all data from data_files;
-        ignore topics where the number of unique questions are not enough for training.
-        Returns:
-            all_topics: list of all topic names
-            all_data: list of data for all topics
+    def get_all_topics(self, data_files):
+        '''Get all topics.
+        Ignore topics where the number of unique questions are not enough for meta-training.
         '''
         all_topics = []
-        all_data = []
         for file in data_files:
             df = pd.read_csv(file, delimiter='\t', encoding='utf-8')
             unique_questions = df.iloc[:,0].unique()
             if len(unique_questions) < self.num_support + self.num_query:
                 continue
-            questions = list(df.iloc[:, 0])
-            responses = list(df.iloc[:, 1])
-            qs, rs = add_prefixes(questions, responses)
-            # 5 sentences maximum for each response
-            # TODO: find better way to shorten the training responses
-            rs = [' '.join(sent_tokenize(r)[:5]) for r in rs]
 
-            all_topics.append(self.get_topic_from_filename(file))
-            all_data.append({'x': qs, 'y': rs})
-        return all_topics, all_data
+            # topic = file.split('/')[-1].split('.tsv')[0]
+            all_topics.append(file)
+        return all_topics
 
-    def format_topic_data(self, data_x, data_y):
-        '''Turn two lists into a map from question to list of corresponding responses'''
+    def read_topic_file(self, file):
+        '''Read data from file.
+        Returns a map from question to list of corresponding responses
+        '''
+        df = pd.read_csv(file, delimiter='\t', encoding='utf-8')
+        questions = list(df.iloc[:, 0])
+        responses = list(df.iloc[:, 1])
+        qs, rs = add_prefixes(questions, responses)
+        # 5 sentences maximum for each response
+        # TODO: find better way to shorten the training responses
+        qs = [' '.join(sent_tokenize(q)[:5]) for q in qs]
+        rs = [' '.join(sent_tokenize(r)[:5]) for r in rs]
+
         formatted_data = {}
-        for i, q in enumerate(data_x):
+        for i, q in enumerate(qs):
             if q in formatted_data:
-                formatted_data[q].append(data_y[i])
+                formatted_data[q].append(rs[i])
             else:
-                formatted_data[q] = [data_y[i]]
+                formatted_data[q] = [rs[i]]
         return formatted_data
 
     def __getitem__(self, topic_idx):
@@ -125,9 +123,9 @@ class CounselChatMetaDataset(dataset.Dataset):
             questions_query (num_query,)
             responses_query (num_query,)
         """
-        print('topic:', self.all_topics[topic_idx])
-        topic_data = self.topic_data[topic_idx]
-        formatted_data = self.format_topic_data(topic_data['x'], topic_data['y'])
+        topic_filepath = self.all_topics[topic_idx]
+        print('topic:', topic_filepath)
+        formatted_data = self.read_topic_file(topic_filepath)
         # sample questions
         all_questions = np.array(list(formatted_data.keys()))
         question_sampled_idxs =  np.random.randint(
@@ -143,7 +141,7 @@ class CounselChatMetaDataset(dataset.Dataset):
         for q in questions_query:
             responses_query.append(np.random.choice(formatted_data[q]))
 
-        return questions_support, np.array(responses_support), questions_query, np.array(responses_query)
+        return list(questions_support), responses_support, list(questions_query), responses_query
 
     def __len__(self):
         return len(self.all_topics)  # currently 31 topics max

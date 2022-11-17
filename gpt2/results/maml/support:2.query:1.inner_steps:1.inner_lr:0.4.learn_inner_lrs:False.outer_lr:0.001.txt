@@ -1,0 +1,6 @@
+Iteration 0: loss: 135.484
+Validation: loss: 103.132, score: 0.282
+Iteration 5: loss: 134.430
+Iteration 10: loss: 101.739
+Iteration 15: loss: 142.175
+Iteration 20: loss: 124.206

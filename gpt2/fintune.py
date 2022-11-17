@@ -25,7 +25,7 @@ parser.add_argument('--device', default='cuda')
 args = parser.parse_args()
 
 DEVICE = torch.device(args.device)
-MAX_TOKENS = 1024
+MAX_TOKENS = 512
 NUM_EPOCHS = 5
 EARLY_STOPPING_THRES = 0.1  # loss value for early stopping
 
