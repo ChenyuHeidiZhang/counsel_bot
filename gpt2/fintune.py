@@ -20,6 +20,7 @@ warnings.filterwarnings('ignore') # setting ignore as a parameter
 parser = argparse.ArgumentParser()
 parser.add_argument('--model', default='med')
 parser.add_argument('--mode', default='all')
+parser.add_argument('--postprocess', default=True)
 parser.add_argument('--debug', action='store_true')
 parser.add_argument('--device', default='cuda')
 args = parser.parse_args()
@@ -90,6 +91,8 @@ def evaluate(model, tokenizer, val_data):
         test_input = val_data[row]['x']
         targets.append(val_data[row]['y'])
         decoded = utils.model_generate(tokenizer, model, test_input, DEVICE, MAX_TOKENS)
+        if args.postprocess:
+            decoded = utils.batch_postprocess_generations(decoded)
         predictions.extend(decoded)
     return utils.get_bleu(predictions, targets)
 

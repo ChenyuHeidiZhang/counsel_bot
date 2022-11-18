@@ -6,8 +6,8 @@ import torch
 from torch import nn
 import transformers
 import numpy as np
-import tensorboard
-import tensorflow as tf
+# import tensorboard
+# import tensorflow as tf
 
 import utils
 from dataloader import get_counselchat_meta_learning_dataloader as get_dataloader
@@ -45,6 +45,7 @@ parser.add_argument('--device', default='cuda')
 args = parser.parse_args()
 
 DEVICE = torch.device(args.device)
+POSTPROCESS = True
 MAX_TOKENS = 256  # maximum number of tokens to generate
 NUM_TEST_TASKS = 0  # TODO: update this
 
@@ -196,8 +197,10 @@ class Gpt2MAML:
 
             if not train:  # do the evaluation only when not training
                 decoded_out = utils.model_generate(self._tokenizer, model_copy, inp_query, DEVICE, MAX_TOKENS)
-                print(inp_query)
-                print(decoded_out)
+                if POSTPROCESS:
+                    decoded_out = utils.batch_postprocess_generations(decoded_out)
+                print("Input:", inp_query)
+                print("Output:", decoded_out)
                 score = utils.get_bleu(decoded_out, out_query)
                 score_query_batch.append(score)
 
@@ -346,14 +349,16 @@ def main(args):
             args.batch_size,
             args.num_support,
             args.num_query,
-            num_training_tasks
+            num_training_tasks,
+            shorten_text=True
         )
         dataloader_val = get_dataloader(
             'val',
             1,
             args.num_support,
             args.num_query,
-            args.batch_size * 2
+            args.batch_size * 2,
+            shorten_text=True
         )
         maml.train(dataloader_train, dataloader_val)
     else:
@@ -367,7 +372,8 @@ def main(args):
             1,
             args.num_support,
             args.num_query,
-            NUM_TEST_TASKS
+            NUM_TEST_TASKS,
+            shorten_text=True
         )
         maml.test(dataloader_test)
 

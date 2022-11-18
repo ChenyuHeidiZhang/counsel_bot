@@ -1,30 +1,25 @@
 from typing import Dict, List, Optional, Tuple
-import torch
-import transformers
 import numpy as np
 import random
 
 import argparse
-from collections import defaultdict
 import json
 import os
+import openai
 import tqdm
+import sys
+sys.path.append("..")
 
-import utils
-from dataloader import CounselChatMetaDataset, NUM_TRAIN_TOPICS, NUM_VAL_TOPICS
+from gpt2.dataloader import CounselChatMetaDataset, NUM_TRAIN_TOPICS, NUM_VAL_TOPICS
+from gpt2 import utils
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--model', default='med')
+parser.add_argument('--model', default='text-curie-001')
 parser.add_argument('--k', default=1)
-parser.add_argument('--num_val', default=128)
-parser.add_argument('--postprocess', default=True)
+parser.add_argument('--max_tokens', default=512)
+parser.add_argument('--temperature', default=0.8)
 parser.add_argument('--debug', action='store_true')
-parser.add_argument('--repeats', default=1, type=int)
-parser.add_argument('--device', default='cuda')
 args = parser.parse_args()
-
-MAX_TOKENS = 512
-DEVICE = torch.device(args.device)
 
 
 def get_icl_prompts(
@@ -35,8 +30,8 @@ def get_icl_prompts(
     Take a list of contexts and combine them into k-shot prompts.
 
     Args:
-      support_inputs: The k inputs used for in-context learning (k may be zero!)
-      support_labels: The k labels used for in-context learning (k may be zero!)
+      support_inputs: The k questions used for in-context learning (k may be zero!)
+      support_labels: The k responses used for in-context learning (k may be zero!)
       test_input: The input we are evaluating on
 
     Returns:
@@ -54,11 +49,8 @@ def get_icl_prompts(
     return prompt
 
 
-def run_icl(model_name: str, k: int, n_val: int = 128):
+def run_icl(k, n_val=128, postprocess=True):
     results = {}
-    print(f'Loading model {model_name}...')
-    model, tokenizer = utils.get_model_and_tokenizer(model_name, transformers.AutoModelForCausalLM)
-    model.to(DEVICE)
 
     if args.debug:
         n_val = 1
@@ -69,7 +61,7 @@ def run_icl(model_name: str, k: int, n_val: int = 128):
         NUM_TRAIN_TOPICS + NUM_VAL_TOPICS
     )
 
-    print(f'Running in-context learning with {model_name} with k={k}')
+    print(f'Running in-context learning with {args.model} with k={k}')
     targets = []
     predictions = []
     pbar = tqdm.tqdm(list(range(n_val)))
@@ -80,10 +72,22 @@ def run_icl(model_name: str, k: int, n_val: int = 128):
         targets.append(out_query[0])
 
         prompt = get_icl_prompts(inp_support, out_support, inp_query[0])
-        decoded_prediction = utils.model_generate(tokenizer, model, prompt, DEVICE, MAX_TOKENS)
-        if args.postprocess:
-            decoded_prediction = utils.batch_postprocess_generations(decoded_prediction)
-        predictions.extend(decoded_prediction)
+
+        generation_output = openai.Completion.create(engine=args.model,
+                                                     prompt=prompt,
+                                                     max_tokens=args.max_tokens,
+                                                     temperature=args.temperature,
+                                                     top_p=0.9,
+                                                     frequency_penalty=0.0,
+                                                     presence_penalty=0.1,
+                                                     best_of=1,
+                                                     stop=None,
+                                                     logprobs=0,  # log probability of top tokens
+                                                    )
+        if postprocess:
+            generation_output = utils._postprocess_generations(generation_output)
+
+        predictions.extend(generation_output)
 
         # print('PROMPT:')
         # print(prompt)
@@ -95,7 +99,7 @@ def run_icl(model_name: str, k: int, n_val: int = 128):
 
         metric = utils.get_bleu(predictions, targets)
         pbar.set_description(f'Eval: {metric:.04f}')
-        results[prompt] = {'PREDICTION': decoded_prediction, 'TARGET': targets[-1]}
+        results[prompt] = {'PREDICTION': generation_output, 'TARGET': targets[-1]}
 
     results['metric'] = metric
     print('Evaluation results:', metric)
@@ -103,15 +107,10 @@ def run_icl(model_name: str, k: int, n_val: int = 128):
     if not os.path.exists('results/icl'):
         os.makedirs('results/icl')
 
-    filename = '_'.join(['icl', model_name, str(k)])
+    filename = '_'.join(['icl', args.model, str(k)])
     with open(f'results/icl/{filename}.json', 'a') as f:
         json.dump(results, f, indent=4)
 
 
-
-def run():
-    run_icl(args.model, args.k, args.num_val)
-
-
 if __name__ == '__main__':
-    run()
+    run_icl(args.k, args)

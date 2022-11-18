@@ -139,7 +139,7 @@ def get_loss(logits: torch.tensor, targets: torch.tensor) -> torch.tensor:
     return nn.functional.cross_entropy(logits[non_mask_idxs], targets[non_mask_idxs])
 
 
-def get_bleu(targets, predictions):
+def get_bleu(predictions, targets):
   """Computes BLEU score.
 
   Args:
@@ -174,3 +174,35 @@ def get_rouge(targets, predictions):
         score = scorer.score(p, t)['rouge1'].fmeasure
         scores.append(score)
     return sum(scores) / len(scores)
+
+
+def _postprocess_generations(generation_output: str) -> str:
+    """
+    Might output an empty string if generation is not at least one full sentence
+    """
+    # replace all whitespaces with a single space
+    generation_output = ' '.join(generation_output.split())
+
+    # remove extra dialog turns, if any
+    if generation_output.find('You: ') > 0:
+        generation_output = generation_output[:generation_output.find(
+            'You: ')]
+    if generation_output.find('Client: ') > 0:
+        generation_output = generation_output[:generation_output.find(
+            'Client: ')]
+
+    # delete half sentences
+    generation_output = generation_output.strip()
+    if len(generation_output) == 0:
+        return generation_output
+
+    if generation_output[-1] not in {'.', '!', '?'}:
+        last_sentence_end = max(generation_output.find(
+            '.'), generation_output.find('!'), generation_output.find('?'))
+        if last_sentence_end > 0:
+            generation_output = generation_output[:last_sentence_end+1]
+
+    return generation_output
+
+def batch_postprocess_generations(generation_outputs):
+    return [_postprocess_generations(output) for output in generation_outputs]

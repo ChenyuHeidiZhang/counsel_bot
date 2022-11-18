@@ -63,3 +63,27 @@ Iteration 245: loss: 118.617
 Iteration 250: loss: 120.960
 Validation: loss: 108.095, score: 0.279
 Iteration 255: loss: 117.821
+Iteration 0: loss: 94.113
+Iteration 0: loss: 143.875
+Validation: loss: 113.566, score: 0.000
+Iteration 0: loss: 104.895
+Validation: loss: 97.416, score: 0.275
+Iteration 0: loss: 117.357
+Iteration 0: loss: 106.389
+Validation: loss: 108.472, score: 0.107
+Iteration 0: loss: 127.477
+Validation: loss: 89.603, score: 0.000
+Iteration 0: loss: 130.303
+Validation: loss: 96.393, score: 0.223
+Iteration 0: loss: 103.269
+Validation: loss: 97.406, score: 0.642
+Iteration 5: loss: 84.824
+Iteration 10: loss: 107.990
+Iteration 15: loss: 118.522
+Iteration 20: loss: 93.913
+Iteration 25: loss: 71.324
+Iteration 30: loss: 98.871
+Iteration 35: loss: 101.683
+Iteration 40: loss: 84.460
+Iteration 45: loss: 101.979
+Iteration 50: loss: 106.620

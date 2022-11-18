@@ -67,11 +67,12 @@ class CounselChatMetaDataset(dataset.Dataset):
     Each element of the dataset is a task.
     Each task consists of k+1 (question, response) pairs of a given topic.
     """
-    def __init__(self, num_support, num_query=1):
+    def __init__(self, num_support, num_query=1, shorten_text=False):
         super().__init__()
 
         self.num_support = num_support
         self.num_query = num_query
+        self.shorten_text = shorten_text
 
         data_path = '../data/meta_learn'
         self.topic_data_files = [os.path.join(data_path, f) for f in os.listdir(data_path)]
@@ -104,8 +105,9 @@ class CounselChatMetaDataset(dataset.Dataset):
         qs, rs = add_prefixes(questions, responses)
         # 5 sentences maximum for each response
         # TODO: find better way to shorten the training responses
-        qs = [' '.join(sent_tokenize(q)[:5]) for q in qs]
-        rs = [' '.join(sent_tokenize(r)[:5]) for r in rs]
+        if self.shorten_text:
+            qs = [' '.join(sent_tokenize(q)[:2]) for q in qs]
+            rs = [' '.join(sent_tokenize(r)[:2]) for r in rs]
 
         formatted_data = {}
         for i, q in enumerate(qs):
@@ -181,7 +183,8 @@ def get_counselchat_meta_learning_dataloader(
         batch_size,
         num_support,
         num_query,
-        num_tasks_per_epoch
+        num_tasks_per_epoch,
+        shorten_text=False
 ):
 
     if split == 'train':
@@ -200,7 +203,7 @@ def get_counselchat_meta_learning_dataloader(
         raise ValueError
 
     return dataloader.DataLoader(
-        dataset=CounselChatMetaDataset(num_support, num_query),
+        dataset=CounselChatMetaDataset(num_support, num_query, shorten_text),
         batch_size=batch_size,
         sampler=CounselChatSampler(split_idxs, num_tasks_per_epoch),
         # num_workers=8,

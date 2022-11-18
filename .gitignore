@@ -9,3 +9,4 @@ t5x/t5x/__pycache__
 t5x/t5x.egg-info
 gpt2/logs
 *state*.pt
+test.py
