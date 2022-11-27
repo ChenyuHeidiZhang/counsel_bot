@@ -11,11 +11,11 @@ import os
 import tqdm
 
 import utils
-from dataloader import CounselChatMetaDataset, NUM_TRAIN_TOPICS, NUM_VAL_TOPICS
+from dataloader import CounselChatMetaDataset, NUM_TRAIN_TOPICS, NUM_VAL_TOPICS, NUM_TEST_TOPICS
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--model', default='med')
-parser.add_argument('--k', default=1)
+parser.add_argument('--k', default=2)
 parser.add_argument('--num_val', default=128)
 parser.add_argument('--postprocess', default=True)
 parser.add_argument('--debug', action='store_true')
@@ -23,7 +23,9 @@ parser.add_argument('--repeats', default=1, type=int)
 parser.add_argument('--device', default='cuda')
 args = parser.parse_args()
 
-MAX_TOKENS = 512
+MAX_NUM_SENTS = 5  # max # sentences for each input question / response; None for k=0, 5 for k=1 and k=2, 4 for k=4
+MAX_TOKENS = 1024  # max # output tokens; 512 is good enough for k=0
+# Note: MAX_TOKENS has to be at least larger than the input prompt size
 DEVICE = torch.device(args.device)
 
 
@@ -54,7 +56,7 @@ def get_icl_prompts(
     return prompt
 
 
-def run_icl(model_name: str, k: int, n_val: int = 128):
+def run_icl(model_name: str, k: int, n_val: int):
     results = {}
     print(f'Loading model {model_name}...')
     model, tokenizer = utils.get_model_and_tokenizer(model_name, transformers.AutoModelForCausalLM)
@@ -62,11 +64,15 @@ def run_icl(model_name: str, k: int, n_val: int = 128):
 
     if args.debug:
         n_val = 1
-    dataset = CounselChatMetaDataset(num_support=k, num_query=1)
+    dataset = CounselChatMetaDataset(num_support=k, num_query=1, num_sents_to_shorten_to=MAX_NUM_SENTS)
 
+    # split_idxs = range(
+    #     NUM_TRAIN_TOPICS,
+    #     NUM_TRAIN_TOPICS + NUM_VAL_TOPICS
+    # )
     split_idxs = range(
-        NUM_TRAIN_TOPICS,
-        NUM_TRAIN_TOPICS + NUM_VAL_TOPICS
+        NUM_TRAIN_TOPICS + NUM_VAL_TOPICS,
+        NUM_TRAIN_TOPICS + NUM_VAL_TOPICS + NUM_TEST_TOPICS
     )
 
     print(f'Running in-context learning with {model_name} with k={k}')
@@ -95,18 +101,18 @@ def run_icl(model_name: str, k: int, n_val: int = 128):
 
         metric = utils.get_bleu(predictions, targets)
         pbar.set_description(f'Eval: {metric:.04f}')
-        results[prompt] = {'PREDICTION': decoded_prediction, 'TARGET': targets[-1]}
+        results[prompt] = {'PREDICTION': predictions[-1], 'TARGET': targets[-1]}
 
-    results['metric'] = metric
     print('Evaluation results:', metric)
 
     if not os.path.exists('results/icl'):
         os.makedirs('results/icl')
 
-    filename = '_'.join(['icl', model_name, str(k)])
-    with open(f'results/icl/{filename}.json', 'a') as f:
+    experiment_name = '_'.join([model_name, str(k)])
+    with open(f'results/icl/metric_{experiment_name}.json', 'w') as f:
+        json.dump({'metric': metric}, f)
+    with open(f'results/icl/outputs_{experiment_name}.json', 'w') as f:
         json.dump(results, f, indent=4)
-
 
 
 def run():

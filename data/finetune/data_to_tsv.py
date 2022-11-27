@@ -11,7 +11,7 @@ df_selected['answerText'] = df_selected['answerText'].str.replace('    ', ' ')
 
 from sklearn.model_selection import train_test_split
 
-train, test = train_test_split(df_selected, test_size=0.1)
+train, test = train_test_split(df_selected, test_size=0.1)  # shuffle=True by default
 # print(test)
 print(train)
 

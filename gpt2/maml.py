@@ -1,6 +1,7 @@
 from typing import List, Tuple
 import argparse
 import copy
+import json
 import os
 import torch
 from torch import nn
@@ -46,8 +47,9 @@ args = parser.parse_args()
 
 DEVICE = torch.device(args.device)
 POSTPROCESS = True
+MAX_NUM_SENTS = 2  # maximum number of sentences for each input question / response
 MAX_TOKENS = 256  # maximum number of tokens to generate
-NUM_TEST_TASKS = 0  # TODO: update this
+NUM_TEST_TASKS = 128 // args.num_query  # TODO: update this
 
 SAVE_INTERVAL = 100
 LOG_INTERVAL = 5
@@ -183,6 +185,7 @@ class Gpt2MAML:
             score_query (float): query set score of the adapted
                 parameters, averaged over the task batch
         """
+        output_record = {}
         outer_loss_batch = []
         score_query_batch = []
         for task in task_batch:
@@ -203,10 +206,12 @@ class Gpt2MAML:
                 print("Output:", decoded_out)
                 score = utils.get_bleu(decoded_out, out_query)
                 score_query_batch.append(score)
+                for i in range(len(inp_query)):
+                    output_record[inp_query[i]] = {'PREDICTION': decoded_out[i], 'TARGET': out_query[i]}
 
         outer_loss = torch.mean(torch.stack(outer_loss_batch))
         score_query = 0 if train else np.mean(score_query_batch)
-        return outer_loss, score_query
+        return outer_loss, score_query, output_record
 
     def train(self, dataloader_train, dataloader_val):
         """Train the MAML.
@@ -226,7 +231,7 @@ class Gpt2MAML:
                 start=self._start_train_step
         ):
             self._optimizer.zero_grad()
-            outer_loss, _ = self._outer_step(task_batch, train=True)
+            outer_loss, _, _ = self._outer_step(task_batch, train=True)
             outer_loss.backward()
             self._optimizer.step()
 
@@ -240,7 +245,7 @@ class Gpt2MAML:
                 losses = []
                 query_scores = []
                 for val_task_batch in dataloader_val:
-                    outer_loss, query_score = self._outer_step(val_task_batch, train=False)
+                    outer_loss, query_score, _ = self._outer_step(val_task_batch, train=False)
                     losses.append(outer_loss.item())
                     query_scores.append(query_score)
                 loss = np.mean(losses)
@@ -260,9 +265,15 @@ class Gpt2MAML:
             dataloader_test (DataLoader): loader for test tasks
         """
         scores = []
+        output_records = {}
         for task_batch in dataloader_test:
-            _, score_query = self._outer_step(task_batch, train=False)
+            _, score_query, output_record = self._outer_step(task_batch, train=False)
             scores.append(score_query)
+            for k, v in output_record:
+                output_records[k] = v
+        with open(os.path.join(self._log_dir, f'support:{args.num_support}.json'), 'w') as f:
+            json.dump(output_records, f, indent=4)
+
         mean = np.mean(scores)
         std = np.std(scores)
         mean_95_confidence_interval = 1.96 * std / np.sqrt(NUM_TEST_TASKS)
@@ -316,7 +327,7 @@ class Gpt2MAML:
 def main(args):
     log_dir = args.log_dir
     if log_dir is None:
-        log_dir = f'./results/maml/'  # pylint: disable=line-too-long
+        log_dir = f'./results/maml/support={args.num_support}'  # pylint: disable=line-too-long
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, f'support:{args.num_support}.query:{args.num_query}.inner_steps:{args.num_inner_steps}.inner_lr:{args.inner_lr}.learn_inner_lrs:{args.learn_inner_lrs}.outer_lr:{args.outer_lr}.txt')
     print(f'log_file: {log_file}')
@@ -350,7 +361,7 @@ def main(args):
             args.num_support,
             args.num_query,
             num_training_tasks,
-            shorten_text=True
+            num_sents_to_shorten_to=MAX_NUM_SENTS
         )
         dataloader_val = get_dataloader(
             'val',
@@ -358,7 +369,7 @@ def main(args):
             args.num_support,
             args.num_query,
             args.batch_size * 2,
-            shorten_text=True
+            num_sents_to_shorten_to=MAX_NUM_SENTS
         )
         maml.train(dataloader_train, dataloader_val)
     else:
@@ -373,7 +384,7 @@ def main(args):
             args.num_support,
             args.num_query,
             NUM_TEST_TASKS,
-            shorten_text=True
+            num_sents_to_shorten_to=MAX_NUM_SENTS
         )
         maml.test(dataloader_test)
 

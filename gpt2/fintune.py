@@ -20,6 +20,10 @@ warnings.filterwarnings('ignore') # setting ignore as a parameter
 parser = argparse.ArgumentParser()
 parser.add_argument('--model', default='med')
 parser.add_argument('--mode', default='all')
+parser.add_argument('--n_train', default=512)
+parser.add_argument('--n_val', default=16)
+parser.add_argument('--n_test', default=128)
+parser.add_argument('--test', default=False, action='store_true')
 parser.add_argument('--postprocess', default=True)
 parser.add_argument('--debug', action='store_true')
 parser.add_argument('--device', default='cuda')
@@ -84,6 +88,7 @@ def parameters_to_fine_tune(model: nn.Module, mode: str) -> List:
 def evaluate(model, tokenizer, val_data):
     targets = []
     predictions = []
+    output_record = {}
     pbar = tqdm.tqdm(list(range(len(val_data))))
 
     # TODO: do batch inference
@@ -94,9 +99,11 @@ def evaluate(model, tokenizer, val_data):
         if args.postprocess:
             decoded = utils.batch_postprocess_generations(decoded)
         predictions.extend(decoded)
-    return utils.get_bleu(predictions, targets)
+        output_record[test_input] = {'PREDICTION': predictions[-1], 'TARGET': targets[-1]}
+    return utils.get_bleu(predictions, targets), output_record
 
 
+# TODO: set batch_size=1 and grad_accum=1 when train_data size < 8
 def ft_gpt2(model, tok, train_data, val_data, mode, batch_size=8, grad_accum=8):
     model = copy.deepcopy(model)
 
@@ -111,25 +118,27 @@ def ft_gpt2(model, tok, train_data, val_data, mode, batch_size=8, grad_accum=8):
     train_dataloader = dataloader.DataLoader(
         train_data, batch_size=batch_size // grad_accum)
     optimizer = torch.optim.Adam(parameters_to_fine_tune(model, mode), lr=2e-5)
-    pbar = tqdm.tqdm(range(NUM_EPOCHS))
-    for epoch in pbar:
-        for idx, batch in enumerate(train_dataloader):
+    # pbar = tqdm.tqdm(range(NUM_EPOCHS))
+    for epoch in range(NUM_EPOCHS):
+        print('EPOCH:', epoch)
+        pbar = tqdm.tqdm(train_dataloader)
+        for idx, batch in enumerate(pbar):
             model.train()
 
             tokenized_seqs = utils.tokenize_gpt2_batch(tok, batch['x'], batch['y'], DEVICE)
             output = model(**tokenized_seqs, use_cache=False)
             loss = output.loss / grad_accum
             loss.backward()
-            if idx % grad_accum == 0 and idx > 0:
+            if idx % grad_accum == 0:
                 optimizer.step()
                 optimizer.zero_grad()
                 pbar.set_description(f'Loss: {loss:.04f}')
 
-            if idx % (grad_accum * 32) == 0:  # evaluate with every 32 gradient updates
-                with torch.no_grad():
-                    model.eval()
-                    bleu_score = evaluate(model, tok, val_data)
-                    print(f'Epoch: {epoch}, Step: {idx}, Fine-tuning score: {bleu_score:.04f}')
+            # if idx % (grad_accum * 32) == 0:  # evaluate with every 32 gradient updates
+            #     with torch.no_grad():
+            #         model.eval()
+            #         bleu_score, _ = evaluate(model, tok, val_data)
+            #         print(f'Epoch: {epoch}, Step: {idx}, Fine-tuning score: {bleu_score:.04f}')
 
             if loss <= EARLY_STOPPING_THRES:
                 print('Early stopping!')
@@ -137,33 +146,49 @@ def ft_gpt2(model, tok, train_data, val_data, mode, batch_size=8, grad_accum=8):
     return model
 
 
-def run_ft(model_name: str, mode: str, n_train: int = 512, n_val: int = 128):
-    results = {}
+def run_ft(model_name: str, mode: str, n_train: int, n_val: int):
     if args.debug:
         n_val = 1
     train = CounselChatFtDataset(split='train', num_data=n_train)
-    print(len(train))
+    print('Num train examples:', len(train))
     val = CounselChatFtDataset(split='test', num_data=n_val)
     model, tokenizer = utils.get_model_and_tokenizer(model_name, transformers.AutoModelForCausalLM)
 
     print(f'Fine-tuning {model_name} with k={n_train} and mode={mode}')
     fine_tuned = ft_gpt2(model, tokenizer, train, val, mode)
 
-    fine_tuned.eval()
-    metric = evaluate(fine_tuned, tokenizer, val)
-    results['_'.join([model_name, mode])] = metric
+    experiment_name = '_'.join([model_name, mode, str(n_train)])
+    if not os.path.exists('results/ft'):
+        os.makedirs('results/ft')
 
-    print(results)
-    question = 'ft'
-    if not os.path.exists(f'results/{question}'):
-        os.makedirs(f'results/{question}')
+    torch.save(
+        fine_tuned.state_dict(),
+        f'results/ft/state_{experiment_name}.pt'
+    )
 
-    for k_, v in results.items():
-        with open(f'results/{question}/{k_}.json', 'w') as f:
-            json.dump({'metric': v}, f)
 
+# Note: we are using the same dataset for validation and testing;
+# this is ok since we do not use the val set for model selection.
+def run_test(model_name: str, mode: str, n_train: int, n_test: int):
+    experiment_name = '_'.join([model_name, mode, str(n_train)])
+    model, tokenizer = utils.get_model_and_tokenizer(model_name, transformers.AutoModelForCausalLM)
+    test = CounselChatFtDataset(split='test', num_data=n_test)
+
+    model.load_state_dict(torch.load(f'results/ft/state_{experiment_name}.pt'))
+    model.to(DEVICE)
+
+    model.eval()
+    metric, output_record = evaluate(model, tokenizer, test)
+    print('Evaluation results:', metric)
+    with open(f'results/ft/metric_{experiment_name}.json', 'w') as f:
+        json.dump({'metric': metric}, f)
+    with open(f'results/ft/outputs_{experiment_name}.json', 'w') as f:
+        json.dump(output_record, f, indent=4)
 
 
 if __name__ == '__main__':
-    run_ft(args.model, args.mode)
+    if args.test:
+        run_test(args.model, args.mode, args.n_train, args.n_test)
+    else:
+        run_ft(args.model, args.mode, args.n_train, args.n_val)
 

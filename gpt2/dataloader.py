@@ -49,7 +49,6 @@ class CounselChatFtDataset(dataset.Dataset):
         # return [(x, y) for x, y in zip(qs, rs)]
 
     def __getitem__(self, idx):
-        print(idx)
         return {'x': self.data['x'][idx], 'y': self.data['y'][idx]}
         # return {'x': self.data[idx][0], 'y': self.data[idx][1]}
 
@@ -57,9 +56,9 @@ class CounselChatFtDataset(dataset.Dataset):
         return len(self.data['x'])
 
 
-NUM_TRAIN_TOPICS = 20
-NUM_VAL_TOPICS = 5
-NUM_TEST_TOPICS = 0  # will get test topics later
+NUM_TRAIN_TOPICS = 15
+NUM_VAL_TOPICS = 2
+NUM_TEST_TOPICS = 7
 
 class CounselChatMetaDataset(dataset.Dataset):
     """
@@ -67,12 +66,16 @@ class CounselChatMetaDataset(dataset.Dataset):
     Each element of the dataset is a task.
     Each task consists of k+1 (question, response) pairs of a given topic.
     """
-    def __init__(self, num_support, num_query=1, shorten_text=False):
+    def __init__(self, num_support, num_query=1, num_sents_to_shorten_to=None):
         super().__init__()
 
         self.num_support = num_support
         self.num_query = num_query
-        self.shorten_text = shorten_text
+
+        # keep num_sents sentences maximum for each question and each response
+        # num_sents = 2 for MAML, 4 for ICL with k=4, 5 for ICL with k=2, and None for k=1
+        # TODO: find better way to shorten the training responses
+        self.num_sents = num_sents_to_shorten_to
 
         data_path = '../data/meta_learn'
         self.topic_data_files = [os.path.join(data_path, f) for f in os.listdir(data_path)]
@@ -103,11 +106,10 @@ class CounselChatMetaDataset(dataset.Dataset):
         questions = list(df.iloc[:, 0])
         responses = list(df.iloc[:, 1])
         qs, rs = add_prefixes(questions, responses)
-        # 5 sentences maximum for each response
-        # TODO: find better way to shorten the training responses
-        if self.shorten_text:
-            qs = [' '.join(sent_tokenize(q)[:2]) for q in qs]
-            rs = [' '.join(sent_tokenize(r)[:2]) for r in rs]
+
+        if self.num_sents:
+            qs = [' '.join(sent_tokenize(q)[:self.num_sents]) for q in qs]
+            rs = [' '.join(sent_tokenize(r)[:self.num_sents]) for r in rs]
 
         formatted_data = {}
         for i, q in enumerate(qs):
@@ -184,7 +186,7 @@ def get_counselchat_meta_learning_dataloader(
         num_support,
         num_query,
         num_tasks_per_epoch,
-        shorten_text=False
+        num_sents_to_shorten_to=None
 ):
 
     if split == 'train':
@@ -203,10 +205,16 @@ def get_counselchat_meta_learning_dataloader(
         raise ValueError
 
     return dataloader.DataLoader(
-        dataset=CounselChatMetaDataset(num_support, num_query, shorten_text),
+        dataset=CounselChatMetaDataset(num_support, num_query, num_sents_to_shorten_to),
         batch_size=batch_size,
         sampler=CounselChatSampler(split_idxs, num_tasks_per_epoch),
         # num_workers=8,
         collate_fn=identity,
         pin_memory=torch.cuda.is_available()
     )
+
+
+# if __name__ == "__main__":
+#     dataset = CounselChatMetaDataset(num_support=4)
+#     print(dataset.all_topics)
+#     print(len(dataset))  # there are 24 topics that have at least 5 distinct questions
