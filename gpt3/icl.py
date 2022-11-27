@@ -10,7 +10,7 @@ import tqdm
 import sys
 sys.path.append("..")
 
-from gpt2.dataloader import CounselChatMetaDataset, NUM_TRAIN_TOPICS, NUM_VAL_TOPICS
+from gpt2.dataloader import CounselChatMetaDataset, NUM_TRAIN_TOPICS, NUM_VAL_TOPICS, NUM_TEST_TOPICS
 from gpt2 import utils
 
 parser = argparse.ArgumentParser()
@@ -57,8 +57,8 @@ def run_icl(k, n_val=128, postprocess=True):
     dataset = CounselChatMetaDataset(num_support=k, num_query=1)
 
     split_idxs = range(
-        NUM_TRAIN_TOPICS,
-        NUM_TRAIN_TOPICS + NUM_VAL_TOPICS
+        NUM_TRAIN_TOPICS + NUM_VAL_TOPICS,
+        NUM_TRAIN_TOPICS + NUM_VAL_TOPICS + NUM_TEST_TOPICS
     )
 
     print(f'Running in-context learning with {args.model} with k={k}')
