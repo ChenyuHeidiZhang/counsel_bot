@@ -20,7 +20,7 @@ warnings.filterwarnings('ignore') # setting ignore as a parameter
 parser = argparse.ArgumentParser()
 parser.add_argument('--model', default='med')
 parser.add_argument('--mode', default='all')
-parser.add_argument('--n_train', default=512)
+parser.add_argument('--n_train', default=None)  # None for using all (1916) training data
 parser.add_argument('--n_val', default=16)
 parser.add_argument('--n_test', default=128)
 parser.add_argument('--test', default=False, action='store_true')

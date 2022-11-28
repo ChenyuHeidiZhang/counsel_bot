@@ -105,11 +105,11 @@ class CounselChatMetaDataset(dataset.Dataset):
         df = pd.read_csv(file, delimiter='\t', encoding='utf-8')
         questions = list(df.iloc[:, 0])
         responses = list(df.iloc[:, 1])
-        qs, rs = add_prefixes(questions, responses)
 
         if self.num_sents:
-            qs = [' '.join(sent_tokenize(q)[:self.num_sents]) for q in qs]
-            rs = [' '.join(sent_tokenize(r)[:self.num_sents]) for r in rs]
+            qs = [' '.join(sent_tokenize(q)[:self.num_sents]) for q in questions]
+            rs = [' '.join(sent_tokenize(r)[:self.num_sents]) for r in responses]
+        qs, rs = add_prefixes(qs, rs)
 
         formatted_data = {}
         for i, q in enumerate(qs):

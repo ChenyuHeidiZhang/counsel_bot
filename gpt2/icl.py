@@ -15,7 +15,7 @@ from dataloader import CounselChatMetaDataset, NUM_TRAIN_TOPICS, NUM_VAL_TOPICS,
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--model', default='med')
-parser.add_argument('--k', default=2)
+parser.add_argument('--k', default=4)
 parser.add_argument('--num_val', default=128)
 parser.add_argument('--postprocess', default=True)
 parser.add_argument('--debug', action='store_true')
@@ -23,7 +23,7 @@ parser.add_argument('--repeats', default=1, type=int)
 parser.add_argument('--device', default='cuda')
 args = parser.parse_args()
 
-MAX_NUM_SENTS = 5  # max # sentences for each input question / response; None for k=0, 5 for k=1 and k=2, 4 for k=4
+MAX_NUM_SENTS = 4  # max # sentences for each input question / response; None for k=0, 5 for k=1 and k=2, 4 for k=4
 MAX_TOKENS = 1024  # max # output tokens; 512 is good enough for k=0
 # Note: MAX_TOKENS has to be at least larger than the input prompt size
 DEVICE = torch.device(args.device)
