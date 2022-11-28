@@ -19,7 +19,7 @@ parser.add_argument('--model', default='med')
 parser.add_argument('--mode', default='all')
 parser.add_argument('--log_dir', type=str, default=None,
                     help='directory to save to or load from')
-parser.add_argument('--num_support', type=int, default=1,
+parser.add_argument('--num_support', type=int, default=2,
                     help='number of support (question, response) pairs in a task')
 parser.add_argument('--num_query', type=int, default=1,
                     help='number of query (question, response) pairs in a task')
@@ -269,7 +269,7 @@ class Gpt2MAML:
         for task_batch in dataloader_test:
             _, score_query, output_record = self._outer_step(task_batch, train=False)
             scores.append(score_query)
-            for k, v in output_record:
+            for k, v in output_record.items():
                 output_records[k] = v
         with open(os.path.join(self._log_dir, f'support:{args.num_support}.json'), 'w') as f:
             json.dump(output_records, f, indent=4)
