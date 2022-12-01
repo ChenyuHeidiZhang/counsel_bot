@@ -137,12 +137,19 @@ class Gpt2MAML:
         self._inner_lrs = torch.tensor(inner_lr, requires_grad=learn_inner_lrs)
         self._outer_lr = outer_lr
 
+        self.gpt2_model = transformers.AutoModelForCausalLM.from_pretrained(‘gpt2’)
+        self.gpt2_model.transformer.gradient_checkpointing = True
+
         # TODO: train only part of GPT-2's parameters
         # TODO: initialize different modules of GPT2 for different lr
         self._optimizer = torch.optim.Adam(
             params=list(parameters_to_fine_tune(self._model, self._mode)) + [self._inner_lrs],
             lr=self._outer_lr
         )
+
+        # optimize the initial params to be adapted
+        self.meta_opt = torch.optim.Adam(list(parameters_to_fine_tune(self._model, self._mode)), self._outer_lr)
+
 
         self._log_dir = log_dir
         self._log_file = log_file
@@ -226,6 +233,51 @@ class Gpt2MAML:
         score_query = 0 if train else np.mean(score_query_batch)
         return outer_loss, score_query, output_record
 
+    # def train(self, dataloader_train, dataloader_val):
+    #     """Train the MAML.
+
+    #     Consumes dataloader_train to optimize MAML meta-parameters
+    #     while periodically validating on dataloader_val, logging metrics, and
+    #     saving checkpoints.
+
+    #     Args:
+    #         dataloader_train (DataLoader): loader for train tasks
+    #         dataloader_val (DataLoader): loader for validation tasks
+    #         writer (SummaryWriter): TensorBoard logger
+    #     """
+    #     print(f'Starting training at iteration {self._start_train_step}.')
+    #     for i_step, task_batch in enumerate(
+    #             dataloader_train,
+    #             start=self._start_train_step
+    #     ):
+    #         self._optimizer.zero_grad()
+    #         outer_loss, _, _ = self._outer_step(task_batch, train=True)
+    #         outer_loss.backward()
+    #         self._optimizer.step()
+
+    #         if i_step % LOG_INTERVAL == 0:
+    #             log = f'Iteration {i_step}: loss: {outer_loss.item():.3f}'
+    #             print(log)
+    #             with open(self._log_file, 'a') as f:
+    #                 f.write(log + '\n')
+
+    #         if i_step % VAL_INTERVAL == 0:
+    #             losses = []
+    #             query_scores = []
+    #             for val_task_batch in dataloader_val:
+    #                 outer_loss, query_score, _ = self._outer_step(val_task_batch, train=False)
+    #                 losses.append(outer_loss.item())
+    #                 query_scores.append(query_score)
+    #             loss = np.mean(losses)
+    #             score = np.mean(query_scores)
+    #             log = f'Validation: loss: {loss:.3f}, score: {score:.3f}'
+    #             print(log)
+    #             with open(self._log_file, 'a') as f:
+    #                 f.write(log + '\n')
+
+    #         if i_step % SAVE_INTERVAL == 0:
+    #             self._save(i_step)
+
     def train(self, dataloader_train, dataloader_val):
         """Train the MAML.
 
@@ -239,17 +291,47 @@ class Gpt2MAML:
             writer (SummaryWriter): TensorBoard logger
         """
         print(f'Starting training at iteration {self._start_train_step}.')
+
         for i_step, task_batch in enumerate(
                 dataloader_train,
                 start=self._start_train_step
         ):
-            self._optimizer.zero_grad()
-            outer_loss, _, _ = self._outer_step(task_batch, train=True)
-            outer_loss.backward()
-            self._optimizer.step()
+
+            meta_opt = self.meta_opt
+            inner_opt = torch.optim.Adam(params=parameters_to_fine_tune(self._model, self._mode),lr=self._inner_lrs)
+            n_inner_iter = self._num_inner_steps
+
+            meta_opt.zero_grad()
+
+            qry_losses = []
+            qry_accs = []
+
+            for task in task_batch:
+                inp_support, out_support, inp_query, out_query = task
+                tokenized_seqs = utils.tokenize_gpt2_batch(self._tokenizer, inp_support, out_support, DEVICE)
+                tokenized_seqs_query = utils.tokenize_gpt2_batch(self._tokenizer, inp_query, out_query, DEVICE)
+
+                with higher.innerloop_ctx(self._model, inner_opt, copy_initial_weights=False) as (maml_model, diffopt):
+                    for _ in range(n_inner_iter):
+
+                        spt_loss = maml_model(**tokenized_seqs).loss
+                        diffopt.step(spt_loss)
+
+                    qry_loss = maml_model(**tokenized_seqs_query).loss
+                    qry_losses.append(qry_loss.detach())
+                    # Update the model's meta-parameters to optimize the query losses across all of the tasks sampled in this batch.
+                    # This unrolls through the gradient steps.
+                    qry_loss.backward()
+            
+            meta_opt.step()
+            outer_loss = np.avg(qry_losses)
+            score_query = 0
+
+
 
             if i_step % LOG_INTERVAL == 0:
-                log = f'Iteration {i_step}: loss: {outer_loss.item():.3f}'
+                # log = f'Iteration {i_step}: loss: {outer_loss.item():.3f}'
+                log = f'Iteration {i_step}: loss: {outer_loss:.3f}'
                 print(log)
                 with open(self._log_file, 'a') as f:
                     f.write(log + '\n')
@@ -258,11 +340,31 @@ class Gpt2MAML:
                 losses = []
                 query_scores = []
                 for val_task_batch in dataloader_val:
-                    outer_loss, query_score, _ = self._outer_step(val_task_batch, train=False)
-                    losses.append(outer_loss.item())
-                    query_scores.append(query_score)
-                loss = np.mean(losses)
-                score = np.mean(query_scores)
+                    val_inp_support, val_out_support, val_inp_query, val_out_query = val_task_batch
+                    val_tokenized_seqs = utils.tokenize_gpt2_batch(self._tokenizer, val_inp_support, val_out_support, DEVICE)
+                    val_tokenized_seqs_query = utils.tokenize_gpt2_batch(self._tokenizer, val_inp_query, val_out_query, DEVICE)
+
+                    with higher.innerloop_ctx(self._model, inner_opt, copy_initial_weights=False) as (maml_model, diffopt):
+                        decoded_out = utils.model_generate(self._tokenizer, maml_model, val_inp_query, DEVICE, MAX_TOKENS)
+                        losses.append(maml_model(**val_tokenized_seqs_query).loss)
+
+                    if POSTPROCESS:
+                        decoded_out = utils.batch_postprocess_generations(decoded_out)
+
+                    print("Input:", val_inp_query)
+                    print("Output:", decoded_out)
+                    score = utils.get_bleu(decoded_out, val_out_query)
+                    query_scores.append(score)
+
+
+                    for i in range(len(val_inp_query)):
+                        output_record[val_inp_query[i]] = {'PREDICTION': decoded_out[i], 'TARGET': val_out_query[i]}
+
+                score_query = np.mean(query_scores)
+                outer_loss = np.mean(losses)
+                    
+                loss = outer_loss
+                score = score_query
                 log = f'Validation: loss: {loss:.3f}, score: {score:.3f}'
                 print(log)
                 with open(self._log_file, 'a') as f:
@@ -270,6 +372,7 @@ class Gpt2MAML:
 
             if i_step % SAVE_INTERVAL == 0:
                 self._save(i_step)
+
 
     def test(self, dataloader_test):
         """Evaluate the MAML on test tasks.
@@ -280,8 +383,28 @@ class Gpt2MAML:
         scores = []
         output_records = {}
         for task_batch in dataloader_test:
-            _, score_query, output_record = self._outer_step(task_batch, train=False)
-            scores.append(score_query)
+
+            tst_inp_support, tst_out_support, tst_inp_query, tst_out_query = dataloader_test
+            tst_tokenized_seqs = utils.tokenize_gpt2_batch(self._tokenizer, tst_inp_support, tst_out_support, DEVICE)
+            tst_tokenized_seqs_query = utils.tokenize_gpt2_batch(self._tokenizer, tst_inp_query, tst_out_query, DEVICE)
+
+            with higher.innerloop_ctx(self._model, inner_opt, copy_initial_weights=False) as (maml_model, diffopt):
+                decoded_out = utils.model_generate(self._tokenizer, maml_model, tst_inp_query, DEVICE, MAX_TOKENS)
+                losses.append(maml_model(**tst_tokenized_seqs_query).loss)
+
+            if POSTPROCESS:
+                decoded_out = utils.batch_postprocess_generations(decoded_out)
+
+            print("Input:", val_inp_query)
+            print("Output:", decoded_out)
+            score = utils.get_bleu(decoded_out, val_out_query)
+            scores.append(score)
+
+
+            for i in range(len(val_inp_query)):
+                output_record[val_inp_query[i]] = {'PREDICTION': decoded_out[i], 'TARGET': val_out_query[i]}
+
+    
             for k, v in output_record.items():
                 output_records[k] = v
         with open(os.path.join(self._log_dir, f'support:{args.num_support}.json'), 'w') as f:
@@ -384,6 +507,7 @@ def main(args):
             args.batch_size * 2,
             num_sents_to_shorten_to=MAX_NUM_SENTS
         )
+
         maml.train(dataloader_train, dataloader_val)
     else:
         print(
