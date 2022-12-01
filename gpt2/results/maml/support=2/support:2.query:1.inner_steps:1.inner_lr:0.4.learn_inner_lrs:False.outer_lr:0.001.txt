@@ -6,3 +6,4 @@ Iteration 15: loss: 142.175
 Iteration 20: loss: 124.206
 Iteration 0: loss: 102.091
 Validation: loss: 107.711, score: 0.079
+Iteration 0: loss: 115.160

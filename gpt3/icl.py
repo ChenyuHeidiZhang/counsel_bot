@@ -9,7 +9,7 @@ import openai
 import tqdm
 import sys
 sys.path.append("..")
-
+import time
 from gpt2.dataloader import CounselChatMetaDataset, NUM_TRAIN_TOPICS, NUM_VAL_TOPICS, NUM_TEST_TOPICS
 from gpt2 import utils
 
@@ -72,10 +72,11 @@ def run_icl(k, n_val=128, postprocess=True):
         targets.append(out_query[0])
 
         prompt = get_icl_prompts(inp_support, out_support, inp_query[0])
+        time.sleep(4)
 
         generation_output = openai.Completion.create(engine=args.model,
                                                      prompt=prompt,
-                                                     max_tokens=args.max_tokens,
+                                                     max_tokens=int(args.max_tokens),
                                                      temperature=args.temperature,
                                                      top_p=0.9,
                                                      frequency_penalty=0.0,
@@ -84,20 +85,23 @@ def run_icl(k, n_val=128, postprocess=True):
                                                      stop=None,
                                                      logprobs=0,  # log probability of top tokens
                                                     )
+
+        generation_output = generation_output.choices[0].text
         if postprocess:
             generation_output = utils._postprocess_generations(generation_output)
 
-        predictions.extend(generation_output)
+        predictions.append(generation_output)
 
         # print('PROMPT:')
         # print(prompt)
         # print('PREDICTION:')
-        # print(decoded_prediction)
+        # print(generation_output)
         # print('TARGET:')
         # print(targets[-1])
         # print('================')
 
         metric = utils.get_bleu(predictions, targets)
+
         pbar.set_description(f'Eval: {metric:.04f}')
         results[prompt] = {'PREDICTION': generation_output, 'TARGET': targets[-1]}
 
@@ -113,4 +117,4 @@ def run_icl(k, n_val=128, postprocess=True):
 
 
 if __name__ == '__main__':
-    run_icl(args.k, args)
+    run_icl(int(args.k))

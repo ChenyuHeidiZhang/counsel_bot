@@ -160,15 +160,18 @@ class Gpt2MAML:
         """
         model_copy = copy.deepcopy(self._model)
         inner_optimizer = torch.optim.Adam(
+            # params=parameters_to_fine_tune(self._model, self._mode),
             params=parameters_to_fine_tune(model_copy, self._mode),
             lr=self._inner_lrs
         )
         for _ in range(self._num_inner_steps):
+            # loss = self._model(**tokenized_seqs).loss
             loss = model_copy(**tokenized_seqs).loss
             loss.backward(create_graph=train)
             inner_optimizer.step()
-        inner_optimizer.zero_grad()
+        inner_optimizer.zero_grad()  # issue: torch optimizer is not differentiable
         return model_copy
+
 
     def _outer_step(self, task_batch, train):
         """Computes the MAML loss and metrics on a batch of tasks.
@@ -192,13 +195,17 @@ class Gpt2MAML:
             inp_support, out_support, inp_query, out_query = task
 
             tokenized_seqs = utils.tokenize_gpt2_batch(self._tokenizer, inp_support, out_support, DEVICE)
+            # model_copy = copy.deepcopy(self._model.state_dict())
             model_copy = self._inner_loop(tokenized_seqs, train)
+            # self._inner_loop(tokenized_seqs, train)
 
             tokenized_query_seqs = utils.tokenize_gpt2_batch(self._tokenizer, inp_query, out_query, DEVICE)
+            # loss = self._model(**tokenized_query_seqs).loss
             loss = model_copy(**tokenized_query_seqs).loss
             outer_loss_batch.append(loss)
 
             if not train:  # do the evaluation only when not training
+                # decoded_out = utils.model_generate(self._tokenizer, self._model, inp_query, DEVICE, MAX_TOKENS)
                 decoded_out = utils.model_generate(self._tokenizer, model_copy, inp_query, DEVICE, MAX_TOKENS)
                 if POSTPROCESS:
                     decoded_out = utils.batch_postprocess_generations(decoded_out)
@@ -208,6 +215,8 @@ class Gpt2MAML:
                 score_query_batch.append(score)
                 for i in range(len(inp_query)):
                     output_record[inp_query[i]] = {'PREDICTION': decoded_out[i], 'TARGET': out_query[i]}
+            
+            # self._model.load_state_dict(model_copy)
 
         outer_loss = torch.mean(torch.stack(outer_loss_batch))
         score_query = 0 if train else np.mean(score_query_batch)

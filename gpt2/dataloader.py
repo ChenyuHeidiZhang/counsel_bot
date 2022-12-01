@@ -107,9 +107,9 @@ class CounselChatMetaDataset(dataset.Dataset):
         responses = list(df.iloc[:, 1])
 
         if self.num_sents:
-            qs = [' '.join(sent_tokenize(q)[:self.num_sents]) for q in questions]
-            rs = [' '.join(sent_tokenize(r)[:self.num_sents]) for r in responses]
-        qs, rs = add_prefixes(qs, rs)
+            questions = [' '.join(sent_tokenize(q)[:self.num_sents]) for q in questions]
+            responses = [' '.join(sent_tokenize(r)[:self.num_sents]) for r in responses]
+        qs, rs = add_prefixes(questions, responses)
 
         formatted_data = {}
         for i, q in enumerate(qs):
@@ -132,8 +132,8 @@ class CounselChatMetaDataset(dataset.Dataset):
         formatted_data = self.read_topic_file(topic_filepath)
         # sample questions
         all_questions = np.array(list(formatted_data.keys()))
-        question_sampled_idxs =  np.random.randint(
-            low=0, high=len(all_questions), size=self.num_support+self.num_query)
+        question_sampled_idxs =  np.random.choice(
+            len(all_questions), size=self.num_support+self.num_query, replace=False)
 
         questions_support = all_questions[question_sampled_idxs[:self.num_support]]
         questions_query = all_questions[question_sampled_idxs[self.num_support:]]
