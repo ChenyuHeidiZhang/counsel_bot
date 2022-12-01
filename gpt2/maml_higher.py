@@ -6,8 +6,10 @@ import os
 import torch
 from torch import nn
 
-from functools import partial
-torch.utils.checkpoint.checkpoint = functools.partial(torch.utils.checkpoint.checkpoint, use_reentrant=False)
+import higher
+
+# from functools import partial
+# torch.utils.checkpoint.checkpoint = functools.partial(torch.utils.checkpoint.checkpoint, use_reentrant=False)
 
 import transformers
 import numpy as np
@@ -137,8 +139,8 @@ class Gpt2MAML:
         self._inner_lrs = torch.tensor(inner_lr, requires_grad=learn_inner_lrs)
         self._outer_lr = outer_lr
 
-        self.gpt2_model = transformers.AutoModelForCausalLM.from_pretrained(‘gpt2’)
-        self.gpt2_model.transformer.gradient_checkpointing = True
+        # self.gpt2_model = transformers.AutoModelForCausalLM.from_pretrained(‘gpt2’)
+        # self.gpt2_model.transformer.gradient_checkpointing = True
 
         # TODO: train only part of GPT-2's parameters
         # TODO: initialize different modules of GPT2 for different lr
