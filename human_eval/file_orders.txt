@@ -1,0 +1,3 @@
+../formatted_results/ft_finetune_gpt3.txt
+../formatted_results/ft_outputs_med_all_128.txt
+../formatted_results/t5x_counsel_bot-1004000.txt

@@ -2,9 +2,12 @@ from typing import List, Tuple
 import os
 import numpy as np
 import pandas as pd
+import json
 import torch
 from torch.utils.data import dataset, sampler, dataloader
 from nltk.tokenize import sent_tokenize
+from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
 
 np.random.seed(42)
 
@@ -66,11 +69,14 @@ class CounselChatMetaDataset(dataset.Dataset):
     Each element of the dataset is a task.
     Each task consists of k+1 (question, response) pairs of a given topic.
     """
-    def __init__(self, num_support, num_query=1, num_sents_to_shorten_to=None):
+    def __init__(
+        self, num_support, num_query=1, classify_topic=False, num_sents_to_shorten_to=None
+    ):
         super().__init__()
 
         self.num_support = num_support
         self.num_query = num_query
+        self.classify_topic = classify_topic
 
         # keep num_sents sentences maximum for each question and each response
         # num_sents = 2 for MAML, 4 for ICL with k=4, 5 for ICL with k=2, and None for k=1
@@ -82,6 +88,16 @@ class CounselChatMetaDataset(dataset.Dataset):
         np.random.shuffle(self.topic_data_files)
 
         self.all_topics = self.get_all_topics(self.topic_data_files)
+
+        if classify_topic:
+            # using multiple topics in support is only supported when there is only 1 query example
+            assert num_query == 1
+            self.embedding_model = SentenceTransformer('bert-base-nli-mean-tokens')
+            with open("../topic-embeddings.json", 'r') as f:
+                topic_embeddings = json.load(f)
+            self.topic_embds = [topic_embeddings[
+                file.split('/')[-1].split('.tsv')[0]] for file in self.all_topics]
+
 
     def get_all_topics(self, data_files):
         '''Get all topics.
@@ -119,6 +135,17 @@ class CounselChatMetaDataset(dataset.Dataset):
                 formatted_data[q] = [rs[i]]
         return formatted_data
 
+    def find_topic_dist(self, questions):
+        '''questions: a list of questions to find topics for;
+        in our case it always has length 1.
+        Returns a distribution over self.all_topics.
+        '''
+        question_embds = self.embedding_model.encode(questions)
+        sim = cosine_similarity(question_embds, self.topic_embds)  # (num_sents, num_topics)
+        # print(np.array(self.all_topics)[np.argmax(sim[0])])
+        # return sim[0] / np.sum(sim[0])
+        return np.exp(sim[0]) / sum(np.exp(sim[0]))  # use the softmax function to emphasize the more possible topics.
+
     def __getitem__(self, topic_idx):
         """Constructs a task. Questions should be different for entries in each task.
         Returns:
@@ -129,23 +156,44 @@ class CounselChatMetaDataset(dataset.Dataset):
         """
         topic_filepath = self.all_topics[topic_idx]
         print('topic:', topic_filepath)
-        formatted_data = self.read_topic_file(topic_filepath)
-        # sample questions
+        formatted_data = self.read_topic_file(topic_filepath)  # question mapped to responses
         all_questions = np.array(list(formatted_data.keys()))
-        question_sampled_idxs =  np.random.choice(
-            len(all_questions), size=self.num_support+self.num_query, replace=False)
+        if not self.classify_topic:
+            # sample questions
+            question_sampled_idxs =  np.random.choice(
+                len(all_questions), size=self.num_support+self.num_query, replace=False)
 
-        questions_support = all_questions[question_sampled_idxs[:self.num_support]]
-        questions_query = all_questions[question_sampled_idxs[self.num_support:]]
+            questions_support = all_questions[question_sampled_idxs[:self.num_support]]
+            questions_query = all_questions[question_sampled_idxs[self.num_support:]]
 
-        responses_support = []
-        for q in questions_support:
-            responses_support.append(np.random.choice(formatted_data[q]))
-        responses_query = []
-        for q in questions_query:
-            responses_query.append(np.random.choice(formatted_data[q]))
+            responses_support = []
+            for q in questions_support:
+                responses_support.append(np.random.choice(formatted_data[q]))  # choose one
+            responses_query = []
+            for q in questions_query:
+                responses_query.append(np.random.choice(formatted_data[q]))
+            return list(questions_support), responses_support, list(questions_query), responses_query
+        else:
+            question_query = np.random.choice(all_questions)
+            topic_dist = self.find_topic_dist([question_query])
+            # Sample support topics according to the classification distribution
+            support_topics = np.random.choice(
+                self.all_topics, size=self.num_support, replace=True, p=topic_dist)
+            questions_support = []
+            responses_support = []
+            for topic in support_topics:
+                topic_data = self.read_topic_file(topic)
+                q_sup = np.random.choice(list(topic_data.keys()))
+                while q_sup in questions_support or q_sup == question_query:
+                    q_sup = np.random.choice(list(topic_data.keys()))
+                r_sup = np.random.choice(topic_data[q_sup])
+                questions_support.append(q_sup)
+                responses_support.append(r_sup)
 
-        return list(questions_support), responses_support, list(questions_query), responses_query
+            response_query = np.random.choice(formatted_data[question_query])
+
+            # print(questions_support, responses_support, [question_query], [response_query])
+            return questions_support, responses_support, [question_query], [response_query]
 
     def __len__(self):
         return len(self.all_topics)  # currently 31 topics max
@@ -186,6 +234,7 @@ def get_counselchat_meta_learning_dataloader(
         num_support,
         num_query,
         num_tasks_per_epoch,
+        classify_topic=False,
         num_sents_to_shorten_to=None
 ):
 
@@ -205,7 +254,7 @@ def get_counselchat_meta_learning_dataloader(
         raise ValueError
 
     return dataloader.DataLoader(
-        dataset=CounselChatMetaDataset(num_support, num_query, num_sents_to_shorten_to),
+        dataset=CounselChatMetaDataset(num_support, num_query, classify_topic, num_sents_to_shorten_to),
         batch_size=batch_size,
         sampler=CounselChatSampler(split_idxs, num_tasks_per_epoch),
         # num_workers=8,

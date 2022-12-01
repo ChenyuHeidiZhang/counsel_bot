@@ -4,6 +4,8 @@ import sacrebleu
 from rouge_score import rouge_scorer
 import transformers
 
+import sys
+sys.path.append("..")
 from gpt2.dataloader import LABEL_PREFIX
 
 def model2hfname(model: str) -> str:

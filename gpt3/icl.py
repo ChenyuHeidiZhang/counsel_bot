@@ -21,6 +21,8 @@ parser.add_argument('--temperature', default=0.8)
 parser.add_argument('--debug', action='store_true')
 args = parser.parse_args()
 
+CLASSIFY_TOPIC = True
+RESULTS_PATH = f'results/icl/classify_topics={CLASSIFY_TOPIC}'
 
 def get_icl_prompts(
     support_inputs: List[str],
@@ -54,7 +56,7 @@ def run_icl(k, n_val=128, postprocess=True):
 
     if args.debug:
         n_val = 1
-    dataset = CounselChatMetaDataset(num_support=k, num_query=1)
+    dataset = CounselChatMetaDataset(num_support=k, num_query=1, classify_topic=CLASSIFY_TOPIC)
 
     split_idxs = range(
         NUM_TRAIN_TOPICS + NUM_VAL_TOPICS,
@@ -108,11 +110,11 @@ def run_icl(k, n_val=128, postprocess=True):
     results['metric'] = metric
     print('Evaluation results:', metric)
 
-    if not os.path.exists('results/icl'):
-        os.makedirs('results/icl')
+    if not os.path.exists(RESULTS_PATH):
+        os.makedirs(RESULTS_PATH)
 
     filename = '_'.join(['icl', args.model, str(k)])
-    with open(f'results/icl/{filename}.json', 'a') as f:
+    with open(f'{RESULTS_PATH}/{filename}.json', 'a') as f:
         json.dump(results, f, indent=4)
 
 

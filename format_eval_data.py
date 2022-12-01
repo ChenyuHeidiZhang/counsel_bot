@@ -5,6 +5,7 @@ def format_gpt_outputs():
     with open(FILENAME, 'r') as f, open(OUTPUT_FILENAME, 'w') as out_f:
         results_d = json.load(f)
         for k, v in results_d.items():
+            if k == "metric": continue
             question = k.split('Client: ')[-1].split('You:')[0].strip()
             response = v['PREDICTION']
             out_f.write(question)
@@ -28,6 +29,9 @@ def format_t5_outputs(num_sents=5):
 
 FILENAME = 'gpt2/results/ft/outputs_med_all_128.json'
 OUTPUT_FILENAME = 'formatted_results/ft_outputs_med_all_128.txt'
+
+FILENAME = 'gpt3/results/finetune/finetune_gpt3.json'
+OUTPUT_FILENAME = 'formatted_results/ft_finetune_gpt3.txt'
 format_gpt_outputs()
 
 # FILENAME = 't5x/finetune-model/inference_eval/counsel_bot-1004000.jsonl'

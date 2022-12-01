@@ -23,7 +23,9 @@ parser.add_argument('--repeats', default=1, type=int)
 parser.add_argument('--device', default='cuda')
 args = parser.parse_args()
 
-MAX_NUM_SENTS = 4  # max # sentences for each input question / response; None for k=0, 5 for k=1 and k=2, 4 for k=4
+CLASSIFY_TOPIC = True
+RESULTS_PATH = f'results/icl/classify_topics={CLASSIFY_TOPIC}'
+MAX_NUM_SENTS = 3  # max # sentences for each input question / response; None for k=0, 5 for k=1 and k=2, 3 for k=4
 MAX_TOKENS = 1024  # max # output tokens; 512 is good enough for k=0
 # Note: MAX_TOKENS has to be at least larger than the input prompt size
 DEVICE = torch.device(args.device)
@@ -64,7 +66,9 @@ def run_icl(model_name: str, k: int, n_val: int):
 
     if args.debug:
         n_val = 1
-    dataset = CounselChatMetaDataset(num_support=k, num_query=1, num_sents_to_shorten_to=MAX_NUM_SENTS)
+    dataset = CounselChatMetaDataset(
+        num_support=k, num_query=1,
+        classify_topic=CLASSIFY_TOPIC, num_sents_to_shorten_to=MAX_NUM_SENTS)
 
     # split_idxs = range(
     #     NUM_TRAIN_TOPICS,
@@ -105,13 +109,13 @@ def run_icl(model_name: str, k: int, n_val: int):
 
     print('Evaluation results:', metric)
 
-    if not os.path.exists('results/icl'):
-        os.makedirs('results/icl')
+    if not os.path.exists(RESULTS_PATH):
+        os.makedirs(RESULTS_PATH)
 
     experiment_name = '_'.join([model_name, str(k)])
-    with open(f'results/icl/metric_{experiment_name}.json', 'w') as f:
+    with open(f'{RESULTS_PATH}/metric_{experiment_name}.json', 'w') as f:
         json.dump({'metric': metric}, f)
-    with open(f'results/icl/outputs_{experiment_name}.json', 'w') as f:
+    with open(f'{RESULTS_PATH}/outputs_{experiment_name}.json', 'w') as f:
         json.dump(results, f, indent=4)
 
 

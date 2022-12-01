@@ -2,21 +2,35 @@ from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 import pandas as pd
 import json
+import os
 
 model = SentenceTransformer('bert-base-nli-mean-tokens')
 
-ALL_TOPICS = ['depression', 'anxiety', 'family-conflict']
+# ALL_TOPICS = ['depression', 'anxiety', 'family-conflict']
+def get_all_topics(data_files):
+    '''Get all topics.
+    '''
+    all_topics = []
+    for file in data_files:
+        topic = file.split('/')[-1].split('.tsv')[0]
+        all_topics.append(topic)
+    return all_topics
+
+DATA_PATH = 'data/meta_learn'
+topic_data_files = [os.path.join(DATA_PATH, f) for f in os.listdir(DATA_PATH)]
+ALL_TOPICS = get_all_topics(topic_data_files)
+print(len(ALL_TOPICS))
 TOPIC_EMBEDDING_FILE = 'topic-embeddings.json'
 
 def calculate_topic_embeddings(topics):
     embeddings = {}
     for topic in topics:
         print(topic)
-        df = pd.read_csv(f'data/meta_learn/{topic}.tsv', delimiter='\t', encoding='utf-8')
+        df = pd.read_csv(f'{DATA_PATH}/{topic}.tsv', delimiter='\t', encoding='utf-8')
         unique_questions = df.iloc[:,0].unique()
         avg_embedding = model.encode(unique_questions).mean(0)
         embeddings[topic] = [float(v) for v in avg_embedding]
-        print(embeddings[topic])
+        # print(embeddings[topic])
     with open(TOPIC_EMBEDDING_FILE, 'w') as f:
         json.dump(embeddings, f)
 
@@ -26,6 +40,7 @@ def read_topic_embeddings():
     return embeddings
 
 def topic_embeddings_from_words(topics):
+    topics = [' '.join(topic.split('-')) for topic in topics]
     embds = model.encode(topics)
     return {topic: embds[i] for i, topic in enumerate(topics)}
 
@@ -41,7 +56,7 @@ if __name__ == "__main__":
     sent = ['My husband and I have been together for seven years now.']
     sent = ["I’m a teenager. My entire family needs family therapy, and more than likely individual therapy. My parents refuse to take action, and I'm tired of it. Is there any way I can get out of this myself?"]
     sent = ["When I'm in large crowds I get angry and I just can't deal with people. I don't really like other people (I prefer animals) they make me nervous and scared. I lay awake at night thinking and having conversations in my head and i almost always end up making myself feel terrible and crying, I have more conversions in my head than I do with actual people."]
-    # calculate_topic_embeddings(ALL_TOPICS)
-    topic_embds = read_topic_embeddings()
+    calculate_topic_embeddings(ALL_TOPICS)
+    # topic_embds = read_topic_embeddings()
     # topic_embds = topic_embeddings_from_words(ALL_TOPICS)
-    find_topics(sent, topic_embds)
+    # find_topics(sent, topic_embds)
