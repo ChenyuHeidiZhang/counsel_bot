@@ -13,7 +13,7 @@ import higher
 
 import transformers
 import numpy as np
-# import tensorboard
+import tensorboard
 # import tensorflow as tf
 
 import utils
@@ -21,8 +21,8 @@ from dataloader import get_counselchat_meta_learning_dataloader as get_dataloade
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--model', default='med')
-parser.add_argument('--mode', default='all')
+parser.add_argument('--model', default='small')
+parser.add_argument('--mode', default='last')
 parser.add_argument('--log_dir', type=str, default=None,
                     help='directory to save to or load from')
 parser.add_argument('--num_support', type=int, default=2,
@@ -294,6 +294,8 @@ class Gpt2MAML:
         """
         print(f'Starting training at iteration {self._start_train_step}.')
 
+        output_record = {}
+
         for i_step, task_batch in enumerate(
                 dataloader_train,
                 start=self._start_train_step
@@ -320,14 +322,13 @@ class Gpt2MAML:
                         diffopt.step(spt_loss)
 
                     qry_loss = maml_model(**tokenized_seqs_query).loss
-                    qry_losses.append(qry_loss.detach())
+                    qry_losses.append(qry_loss.detach().item())
                     # Update the model's meta-parameters to optimize the query losses across all of the tasks sampled in this batch.
                     # This unrolls through the gradient steps.
                     qry_loss.backward()
             
             meta_opt.step()
-            outer_loss = np.avg(qry_losses)
-            score_query = 0
+            outer_loss = np.mean(qry_losses)
 
 
 
@@ -341,21 +342,32 @@ class Gpt2MAML:
             if i_step % VAL_INTERVAL == 0:
                 losses = []
                 query_scores = []
+
                 for val_task_batch in dataloader_val:
-                    val_inp_support, val_out_support, val_inp_query, val_out_query = val_task_batch
+                    val_inp_support, val_out_support, val_inp_query, val_out_query = val_task_batch[0]
                     val_tokenized_seqs = utils.tokenize_gpt2_batch(self._tokenizer, val_inp_support, val_out_support, DEVICE)
                     val_tokenized_seqs_query = utils.tokenize_gpt2_batch(self._tokenizer, val_inp_query, val_out_query, DEVICE)
 
+                
                     with higher.innerloop_ctx(self._model, inner_opt, copy_initial_weights=False) as (maml_model, diffopt):
-                        decoded_out = utils.model_generate(self._tokenizer, maml_model, val_inp_query, DEVICE, MAX_TOKENS)
-                        losses.append(maml_model(**val_tokenized_seqs_query).loss)
+                        qry_loss = maml_model(**val_tokenized_seqs_query).loss
+                        diffopt.step(qry_loss)
+
+                        losses.append(qry_loss.detach().item())
+                        # print('maml_model=====')
+                        # print(maml_model)
+
+                        # print(self._tokenizer(val_inp_query, return_tensors='pt'))
+                        # decoded_out = utils.model_generate(self._tokenizer, maml_model, val_inp_query, DEVICE, MAX_TOKENS)
+                        decoded_out = ['decoded_out is wrong due to the attention_mask not found in model .....']
 
                     if POSTPROCESS:
                         decoded_out = utils.batch_postprocess_generations(decoded_out)
 
                     print("Input:", val_inp_query)
                     print("Output:", decoded_out)
-                    score = utils.get_bleu(decoded_out, val_out_query)
+                    # score = utils.get_bleu(decoded_out, val_out_query)
+                    score = 0
                     query_scores.append(score)
 
 
