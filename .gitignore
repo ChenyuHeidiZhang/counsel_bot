@@ -10,3 +10,7 @@ t5x/t5x.egg-info
 gpt2/logs
 *state*.pt
 test.py
+
+gpt2/results
+gpt2/support/
+gpt2/logs
