@@ -143,8 +143,10 @@ class CounselChatMetaDataset(dataset.Dataset):
         question_embds = self.embedding_model.encode(questions)
         sim = cosine_similarity(question_embds, self.topic_embds)  # (num_sents, num_topics)
         # print(np.array(self.all_topics)[np.argmax(sim[0])])
-        # return sim[0] / np.sum(sim[0])
-        return np.exp(sim[0]) / sum(np.exp(sim[0]))  # use the softmax function to emphasize the more possible topics.
+        return sim[0] / np.sum(sim[0])
+        # print(sim[0] / np.sum(sim[0]))
+        # print(np.exp(sim[0]) / sum(np.exp(sim[0])))
+        # return np.exp(sim[0]) / sum(np.exp(sim[0]))  # use the softmax function
 
     def __getitem__(self, topic_idx):
         """Constructs a task. Questions should be different for entries in each task.
