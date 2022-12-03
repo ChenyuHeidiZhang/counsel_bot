@@ -157,7 +157,7 @@ class CounselChatMetaDataset(dataset.Dataset):
             responses_query (num_query,)
         """
         topic_filepath = self.all_topics[topic_idx]
-        print('topic:', topic_filepath)
+        # print('topic:', topic_filepath)
         formatted_data = self.read_topic_file(topic_filepath)  # question mapped to responses
         all_questions = np.array(list(formatted_data.keys()))
         if not self.classify_topic:

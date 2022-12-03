@@ -22,6 +22,7 @@ parser.add_argument('--debug', action='store_true')
 args = parser.parse_args()
 
 CLASSIFY_TOPIC = True
+MAX_NUM_SENTS = 5
 RESULTS_PATH = f'results/icl/classify_topics={CLASSIFY_TOPIC}'
 
 def get_icl_prompts(
@@ -56,7 +57,9 @@ def run_icl(k, n_val=128, postprocess=True):
 
     if args.debug:
         n_val = 1
-    dataset = CounselChatMetaDataset(num_support=k, num_query=1, classify_topic=CLASSIFY_TOPIC)
+    dataset = CounselChatMetaDataset(
+        num_support=k, num_query=1,
+        classify_topic=CLASSIFY_TOPIC, num_sents_to_shorten_to=MAX_NUM_SENTS)
 
     split_idxs = range(
         NUM_TRAIN_TOPICS + NUM_VAL_TOPICS,

@@ -9,6 +9,7 @@ from torch import nn
 import higher
 
 from functools import partial
+from torch.utils.checkpoint import checkpoint
 torch.utils.checkpoint.checkpoint = partial(torch.utils.checkpoint.checkpoint, use_reentrant=False)
 
 import transformers
@@ -21,11 +22,11 @@ from dataloader import get_counselchat_meta_learning_dataloader as get_dataloade
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--model', default='med')
+parser.add_argument('--model', default='small')
 parser.add_argument('--mode', default='last')
 parser.add_argument('--log_dir', type=str, default=None,
                     help='directory to save to or load from')
-parser.add_argument('--num_support', type=int, default=1,
+parser.add_argument('--num_support', type=int, default=4,
                     help='number of support (question, response) pairs in a task')
 parser.add_argument('--num_query', type=int, default=1,
                     help='number of query (question, response) pairs in a task')
@@ -39,7 +40,7 @@ parser.add_argument('--outer_lr', type=float, default=0.001,
                     help='outer-loop learning rate')
 parser.add_argument('--batch_size', type=int, default=1,
                     help='number of tasks per outer-loop update')
-parser.add_argument('--num_train_iterations', type=int, default=1000,
+parser.add_argument('--num_train_iterations', type=int, default=2000,
                     help='number of outer-loop updates to train for')
 parser.add_argument('--test', default=False, action='store_true',
                     help='train or test')
@@ -54,12 +55,12 @@ args = parser.parse_args()
 DEVICE = torch.device(args.device)
 POSTPROCESS = True
 GRADIENT_CHECKPOINTING = True
-MAX_NUM_SENTS = 2  # maximum number of sentences for each input question / response
-MAX_TOKENS = 256  # maximum number of tokens to generate
+MAX_NUM_SENTS = 3  # maximum number of sentences for each input question / response
+MAX_TOKENS = 1024  # maximum number of tokens to generate
 NUM_TEST_TASKS = 128 // args.num_query  # TODO: update this
 
 SAVE_INTERVAL = 100
-LOG_INTERVAL = 5
+LOG_INTERVAL = 10
 VAL_INTERVAL = LOG_INTERVAL * 10
 
 
@@ -186,17 +187,10 @@ class Gpt2MAML:
                 tokenized_seqs_query = utils.tokenize_gpt2_batch(self._tokenizer, inp_query, out_query, DEVICE)
 
                 with higher.innerloop_ctx(self._model, inner_opt, copy_initial_weights=False) as (maml_model, diffopt):
-                    # decoded_out = utils.model_generate_v2(self._tokenizer, maml_model, inp_query, DEVICE, MAX_TOKENS)
-                    # print(decoded_out)
-        
                     for _ in range(self._num_inner_steps):
 
                         spt_loss = maml_model(**tokenized_seqs).loss
                         diffopt.step(spt_loss)
-
-                    # print(222)
-                    # decoded_out = utils.model_generate_v2(self._tokenizer, maml_model, inp_query, DEVICE, MAX_TOKENS)
-                    # print(decoded_out)
 
                     qry_loss = maml_model(**tokenized_seqs_query).loss
                     qry_losses.append(qry_loss.detach().item())
@@ -236,6 +230,8 @@ class Gpt2MAML:
             val_tokenized_seqs_query = utils.tokenize_gpt2_batch(self._tokenizer, val_inp_query, val_out_query, DEVICE)
 
             with higher.innerloop_ctx(self._model, inner_opt, track_higher_grads=False) as (maml_model, diffopt):
+                # decoded_out = utils.model_generate_v2(self._tokenizer, maml_model, val_inp_query, DEVICE, MAX_TOKENS)
+                # print(decoded_out)
                 for _ in range(self._num_inner_steps):
                     spt_loss = maml_model(**val_tokenized_seqs).loss
                     diffopt.step(spt_loss)
@@ -262,13 +258,13 @@ class Gpt2MAML:
         score_query = np.mean(query_scores)
         outer_loss = np.mean(losses)
 
-        log = f'Validation: loss: {score_query:.3f}, score: {outer_loss:.3f}'
+        log = f'Validation: loss: {outer_loss:.3f}, score: {score_query:.3f}'
         print(log)
         with open(self._log_file, 'a') as f:
             f.write(log + '\n')
 
         if test:
-            with open(os.path.join(self._log_dir, f'support:{args.num_support}.json'), 'w') as f:
+            with open(os.path.join(self._log_dir, f'test_support:{args.num_support}.json'), 'w') as f:
                 json.dump(output_records, f, indent=4)
 
             std = np.std(query_scores)
@@ -332,9 +328,9 @@ class Gpt2MAML:
 def main(args):
     log_dir = args.log_dir
     if log_dir is None:
-        log_dir = f'./results/maml/support={args.num_support}'  # pylint: disable=line-too-long
+        log_dir = f'./results/maml/support={args.num_support}.model={args.model}.mode={args.mode}'  # pylint: disable=line-too-long
     os.makedirs(log_dir, exist_ok=True)
-    log_file = os.path.join(log_dir, f'model:{args.model}.inner_steps:{args.num_inner_steps}.inner_lr:{args.inner_lr}.learn_inner_lrs:{args.learn_inner_lrs}.outer_lr:{args.outer_lr}.txt')
+    log_file = os.path.join(log_dir, f'inner_steps:{args.num_inner_steps}.inner_lr:{args.inner_lr}.outer_lr:{args.outer_lr}.txt')
     print(f'log_file: {log_file}')
 
     maml = Gpt2MAML(

@@ -1,4 +1,0 @@
-Iteration 0: loss: 7.605
-Validation: loss: 0.312, score: 6.729
-Iteration 5: loss: 6.501
-Iteration 10: loss: 5.951

@@ -118,8 +118,9 @@ def model_generate_v2(tokenizer, model, test_input, DEVICE, MAX_TOKENS):
     input_ids = encodings['input_ids'].to(DEVICE)
     # attn_mask = encodings['attention_mask'].to(DEVICE)
     sampled_tokens = model.generate(input_ids, max_length=MAX_TOKENS)
+    # sampled_tokens = [do_sample(model, input_ids, MAX_TOKENS)]
     decoded_out = []
-    for i in range(sampled_tokens.size(0)):
+    for i in range(len(sampled_tokens)):
         decoded = tokenizer.decode(sampled_tokens[i]).split(LABEL_PREFIX.strip())[-1].strip()
         decoded_out.append(decoded)
     return decoded_out
