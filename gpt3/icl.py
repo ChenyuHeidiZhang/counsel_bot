@@ -15,7 +15,7 @@ from gpt2 import utils
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--model', default='text-curie-001')
-parser.add_argument('--k', default=1)
+parser.add_argument('--k', default=4)
 parser.add_argument('--max_tokens', default=512)
 parser.add_argument('--temperature', default=0.8)
 parser.add_argument('--debug', action='store_true')
