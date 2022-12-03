@@ -116,7 +116,7 @@ def model_generate_v2(tokenizer, model, test_input, DEVICE, MAX_TOKENS):
     '''Sample tokens and decode.'''
     encodings = tokenizer(test_input, return_tensors='pt')  #.input_ids.to(DEVICE)
     input_ids = encodings['input_ids'].to(DEVICE)
-    attn_mask = encodings['attention_mask'].to(DEVICE)
+    # attn_mask = encodings['attention_mask'].to(DEVICE)
     sampled_tokens = model.generate(input_ids, max_length=MAX_TOKENS)
     decoded_out = []
     for i in range(sampled_tokens.size(0)):

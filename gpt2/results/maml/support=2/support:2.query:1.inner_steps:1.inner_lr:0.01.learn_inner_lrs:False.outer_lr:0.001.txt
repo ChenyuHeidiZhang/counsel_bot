@@ -1,0 +1,68 @@
+Iteration 0: loss: 6.393
+Iteration 0: loss: 6.912
+Validation: loss: 7.348, score: 0.136
+Iteration 5: loss: 6.892
+Iteration 10: loss: 7.092
+Iteration 15: loss: 6.486
+Iteration 20: loss: 6.469
+Iteration 25: loss: 5.974
+Iteration 30: loss: 6.186
+Iteration 0: loss: 7.180
+Iteration 0: loss: 6.140
+Validation: loss: 0.347, score: 6.140
+Iteration 0: loss: 6.912
+Validation: loss: 0.775, score: 7.058
+Iteration 5: loss: 6.422
+Iteration 10: loss: 6.708
+Iteration 15: loss: 6.745
+Iteration 20: loss: 6.274
+Iteration 25: loss: 6.147
+Iteration 30: loss: 5.591
+Iteration 35: loss: 5.220
+Iteration 40: loss: 5.961
+Iteration 45: loss: 5.417
+Iteration 50: loss: 6.762
+Validation: loss: 4.064, score: 5.330
+Iteration 55: loss: 5.710
+Iteration 60: loss: 5.384
+Iteration 65: loss: 6.856
+Iteration 70: loss: 6.352
+Iteration 75: loss: 6.093
+Iteration 80: loss: 5.772
+Iteration 85: loss: 5.932
+Iteration 90: loss: 5.918
+Iteration 95: loss: 5.099
+Iteration 100: loss: 6.669
+Validation: loss: 0.433, score: 5.999
+Iteration 105: loss: 6.983
+Iteration 110: loss: 7.470
+Iteration 115: loss: 6.042
+Iteration 120: loss: 6.038
+Iteration 125: loss: 6.585
+Iteration 130: loss: 6.657
+Iteration 135: loss: 6.609
+Iteration 140: loss: 6.108
+Iteration 145: loss: 6.239
+Iteration 150: loss: 5.537
+Validation: loss: 0.197, score: 6.940
+Iteration 155: loss: 5.461
+Iteration 160: loss: 6.763
+Iteration 165: loss: 5.449
+Iteration 170: loss: 6.173
+Iteration 175: loss: 5.616
+Iteration 180: loss: 6.644
+Iteration 185: loss: 5.938
+Iteration 190: loss: 5.308
+Iteration 195: loss: 6.617
+Iteration 200: loss: 6.123
+Validation: loss: 0.057, score: 6.073
+Iteration 205: loss: 6.425
+Iteration 210: loss: 6.314
+Iteration 215: loss: 5.333
+Iteration 220: loss: 5.759
+Iteration 225: loss: 6.105
+Iteration 230: loss: 4.525
+Iteration 235: loss: 4.709
+Iteration 240: loss: 5.529
+Iteration 245: loss: 5.652
+Iteration 250: loss: 5.372
