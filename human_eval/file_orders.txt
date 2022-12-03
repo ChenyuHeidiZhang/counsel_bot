@@ -1,3 +1,10 @@
+../formatted_results/icl_4_classify_topics_gpt2_med.txt
+../formatted_results/icl_1_gpt2_med.txt
+../formatted_results/icl_4_classify_topics_gpt3.txt
+../formatted_results/maml_1_gpt2_med.txt
 ../formatted_results/ft_finetune_gpt3.txt
-../formatted_results/ft_outputs_med_all_128.txt
+../formatted_results/ft_128_gpt2_med.txt
 ../formatted_results/t5x_counsel_bot-1004000.txt
+../formatted_results/maml_4_gpt2_sm.txt
+../formatted_results/icl_4_gpt2_med.txt
+../formatted_results/icl_4_gpt3.txt

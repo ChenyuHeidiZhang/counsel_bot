@@ -3,6 +3,7 @@ import argparse
 import copy
 import json
 import os
+import tqdm
 import torch
 from torch import nn
 
@@ -30,13 +31,13 @@ parser.add_argument('--num_support', type=int, default=4,
                     help='number of support (question, response) pairs in a task')
 parser.add_argument('--num_query', type=int, default=1,
                     help='number of query (question, response) pairs in a task')
-parser.add_argument('--num_inner_steps', type=int, default=1,
+parser.add_argument('--num_inner_steps', type=int, default=1,  # 1 when num_supports = 4, 2 when num_supports = 2, 4 when num_supports=1
                     help='number of inner-loop updates')
-parser.add_argument('--inner_lr', type=float, default=0.01,
+parser.add_argument('--inner_lr', type=float, default=0.001,
                     help='inner-loop learning rate initialization')
 parser.add_argument('--learn_inner_lrs', default=True, action='store_true',
                     help='whether to optimize inner-loop learning rates')
-parser.add_argument('--outer_lr', type=float, default=0.001,
+parser.add_argument('--outer_lr', type=float, default=0.0005,
                     help='outer-loop learning rate')
 parser.add_argument('--batch_size', type=int, default=1,
                     help='number of tasks per outer-loop update')
@@ -59,7 +60,7 @@ MAX_NUM_SENTS = 3  # maximum number of sentences for each input question / respo
 MAX_TOKENS = 1024  # maximum number of tokens to generate
 NUM_TEST_TASKS = 128 // args.num_query  # TODO: update this
 
-SAVE_INTERVAL = 100
+SAVE_INTERVAL = 200
 LOG_INTERVAL = 10
 VAL_INTERVAL = LOG_INTERVAL * 10
 
@@ -209,11 +210,13 @@ class Gpt2MAML:
                     f.write(log + '\n')
 
             if i_step % VAL_INTERVAL == 0:
-                print('inner lr:', self._inner_lr)
+                # print('inner lr:', self._inner_lr)
                 self.eval(dataloader_val, test=False)
 
             if i_step % SAVE_INTERVAL == 0:
                 self._save(i_step)
+
+        self._save(i_step+1)
 
 
     def eval(self, dataloader_val, test=False):
@@ -224,7 +227,7 @@ class Gpt2MAML:
         inner_opt = torch.optim.Adam(
             params=parameters_to_fine_tune(self._model, self._mode), lr=self._inner_lr)
 
-        for val_task_batch in dataloader_val:  # batch_size = 1
+        for val_task_batch in tqdm.tqdm(dataloader_val):  # batch_size = 1
             val_inp_support, val_out_support, val_inp_query, val_out_query = val_task_batch[0]
             val_tokenized_seqs = utils.tokenize_gpt2_batch(self._tokenizer, val_inp_support, val_out_support, DEVICE)
             val_tokenized_seqs_query = utils.tokenize_gpt2_batch(self._tokenizer, val_inp_query, val_out_query, DEVICE)
@@ -258,13 +261,14 @@ class Gpt2MAML:
         score_query = np.mean(query_scores)
         outer_loss = np.mean(losses)
 
-        log = f'Validation: loss: {outer_loss:.3f}, score: {score_query:.3f}'
+        split = 'Test' if test else 'Validation'
+        log = f'{split}: loss: {outer_loss:.3f}, score: {score_query:.3f}'
         print(log)
         with open(self._log_file, 'a') as f:
             f.write(log + '\n')
 
         if test:
-            with open(os.path.join(self._log_dir, f'test_support:{args.num_support}.json'), 'w') as f:
+            with open(os.path.join(self._log_dir, f'test_support={args.num_support}.json'), 'w') as f:
                 json.dump(output_records, f, indent=4)
 
             std = np.std(query_scores)

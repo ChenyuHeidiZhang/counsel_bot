@@ -34,18 +34,25 @@ OUTPUT_FILENAME = 'formatted_results/ft_128_gpt2_med.txt'
 
 FILENAME = 'gpt2/results/icl/classify_topics=False/outputs_med_1.json'
 OUTPUT_FILENAME = 'formatted_results/icl_1_gpt2_med.txt'
+FILENAME = 'gpt2/results/icl/classify_topics=False/outputs_med_4.json'
+OUTPUT_FILENAME = 'formatted_results/icl_4_gpt2_med.txt'
 
-FILENAME = 'gpt2/results/icl/classify_topics=True/outputs_med_4.json'
-OUTPUT_FILENAME = 'formatted_results/icl_4_classify_topics_gpt2_med.txt'
+# FILENAME = 'gpt2/results/icl/classify_topics=True/outputs_med_4.json'
+# OUTPUT_FILENAME = 'formatted_results/icl_4_classify_topics_gpt2_med.txt'
 
-FILENAME = 'gpt3/results/finetune/finetune_gpt3.json'
-OUTPUT_FILENAME = 'formatted_results/ft_finetune_gpt3.txt'
+# FILENAME = 'gpt2/results/maml/support=1.model=med.mode=last/test_support=1.json'
+# OUTPUT_FILENAME = 'formatted_results/maml_1_gpt2_med.txt'
+# FILENAME = 'gpt2/results/maml/support=4.model=small.mode=last/test_support=4.json'
+# OUTPUT_FILENAME = 'formatted_results/maml_4_gpt2_sm.txt'
 
-FILENAME = 'gpt3/results/icl/classify_topics=False/icl_text-curie-001_4.json'
-OUTPUT_FILENAME = 'formatted_results/icl_4_gpt3.txt'
+# FILENAME = 'gpt3/results/finetune/finetune_gpt3.json'
+# OUTPUT_FILENAME = 'formatted_results/ft_finetune_gpt3.txt'
 
-FILENAME = 'gpt3/results/icl/classify_topics=True/icl_text-curie-001_2.json'
-OUTPUT_FILENAME = 'formatted_results/icl_2_classify_topics_gpt3.txt'
+# FILENAME = 'gpt3/results/icl/classify_topics=False/icl_text-curie-001_4.json'
+# OUTPUT_FILENAME = 'formatted_results/icl_4_gpt3.txt'
+
+# FILENAME = 'gpt3/results/icl/classify_topics=True/icl_text-curie-001_4.json'
+# OUTPUT_FILENAME = 'formatted_results/icl_4_classify_topics_gpt3.txt'
 format_gpt_outputs()
 
 # FILENAME = 't5x/finetune-model/inference_eval/counsel_bot-1004000.jsonl'
