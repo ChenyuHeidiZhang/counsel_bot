@@ -1,0 +1,13 @@
+model,train_method,classify_topics,value
+gpt2 (fluency),icl_4,classify,7.95
+gpt2 (empathy),icl_4,classify,4.33
+gpt2 (helpfulness),icl_4,classify,2.83
+gpt2 (fluency),icl_4,not classify,6.72
+gpt2 (empathy),icl_4,not classify,3.82
+gpt2 (helpfulness),icl_4,not classify,3.08
+gpt3 (fluency),icl_4,classify,9.13
+gpt3 (empathy),icl_4,classify,8.5
+gpt3 (helpfulness),icl_4,classify,7.68
+gpt3 (fluency),icl_4,not classify,8.83
+gpt3 (empathy),icl_4,not classify,7.8
+gpt3 (helpfulness),icl_4,not classify,7.3

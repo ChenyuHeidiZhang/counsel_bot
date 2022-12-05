@@ -1,0 +1,11 @@
+model,train_method,classify_topics,fluency,empathy,helpfulness
+gpt2,icl_4,True,7.95,4.33,2.83
+gpt2,icl_1,False,8.18,3.3,2.47
+gpt3,icl_4,True,9.13,8.5,7.68
+gpt2,maml_1,False,8.12,3.2,1.73
+gpt3,ft,False,7.85,6.22,5.6
+gpt2,ft,False,7.23,5.55,2.45
+t5,ft,False,7.15,6.28,5.52
+gpt2_sm,maml_4,False,5.7,2.22,1.98
+gpt2,icl_4,False,6.72,3.82,3.08
+gpt3,icl_4,False,8.83,7.8,7.3

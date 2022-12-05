@@ -1,0 +1,13 @@
+model,metric,train_method,classify_topics,value
+gpt3,fluency,ft,False,7.85
+gpt3,empathy,ft,False,6.22
+gpt3,helpfulness,ft,False,5.6
+gpt2,fluency,ft,False,7.23
+gpt2,empathy,ft,False,5.55
+gpt2,helpfulness,ft,False,2.45
+t5,fluency,ft,False,7.15
+t5,empathy,ft,False,6.28
+t5,helpfulness,ft,False,5.52
+best,fluency,icl,True,9.13
+best,empathy,icl,True,8.5
+best,helpfulness,icl,True,7.68
